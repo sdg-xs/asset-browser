@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.local-data/
+.superpowers/
+.worktrees/
+output/
+*.log
+.env
+.env.local
