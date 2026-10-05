@@ -1,6 +1,6 @@
 # Web asset browser architecture
 
-MVP scope agreed by the user on 2026-10-05. This document supersedes the initial broader architecture proposal. No application implementation or deployment has been performed.
+MVP scope agreed by the user on 2026-10-05. This document supersedes the initial broader architecture proposal. The local React catalog, browser IFC worker, representative That Open viewer, and persistent Node file service are implemented. The production build was verified locally; no remote deployment is required. See [verification.md](verification.md).
 
 ## Agreed architecture
 

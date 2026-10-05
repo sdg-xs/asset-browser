@@ -1,6 +1,6 @@
 # Web asset browser requirements
 
-Scope agreed by the user on 2026-10-05 after requirements and architecture review. This document supersedes the initial proposed requirements. No application has been implemented.
+Scope agreed by the user on 2026-10-05 after requirements and architecture review. This document supersedes the initial proposed requirements. The local MVP is implemented; production browser evidence and limits are recorded in [verification.md](verification.md).
 
 Source brief: `C:/Users/StevenGomba/OneDrive - HEMY AS/Desktop/Obsidian Notes/Work/Developments/Web Asset Browser.md`.
 
@@ -38,7 +38,7 @@ Do not merge types solely by their display names. Report elements that cannot be
 
 Opening a type card provides read-only IFC properties and a representative 3D preview. The viewer supports inspection; it has no placement or editing tools. Source type names are display labels, not unique identifiers.
 
-Use That Open Engine/Fragments for IFC capabilities, subject to representative-file validation. IFC processing and viewing initially run in the browser. Browser processing feasibility remains unverified.
+The browser uses web-ifc for IFC processing and That Open Components for representative viewing. Browser processing and viewing were verified on BS19 and the small IFC fixture. This does not establish support for every supplied model.
 
 ## Initial validation model
 
@@ -55,7 +55,7 @@ BS19 is IFC4, 122,676,603 bytes, approximately 117 MiB. Bounded inspection verif
 
 HG62 was inspected before selecting BS19. It is IFC4, 544,981,520 bytes, approximately 520 MiB. Its sampled category, element, and type relationships also support the mapping. Full HG62 browser support is not an initial feasibility commitment.
 
-These are file-inspection findings, not successful conversion or rendering results. No exhaustive category, missing-value, or duplicate-name profile has been produced.
+The initial findings above came from bounded file inspection. Subsequent browser validation produced 1,019 BS19 type cards, 107 categories, 4,187 excluded occurrences and 79 untyped occurrences, and rendered the sensor's representative geometry. See the verification document for the tested scope.
 
 ## Acceptance checks for implementation
 
@@ -68,4 +68,4 @@ These are file-inspection findings, not successful conversion or rendering resul
 7. Removing a model survives refresh/restart and leaves its original IFC on disk.
 8. No FM, placement, Nucleus, or commercial Platform dependency is needed to demonstrate the MVP.
 
-These checks have not been executed. See [architecture-review.md](architecture-review.md) for implementation responsibilities.
+All eight checks have implementation evidence. Automated tests cover source identity, classifications, storage boundaries and stale responses; the production browser run covers BS19 browsing/inspection and valid upload, restart, removal, second restart, and retained file hashes. See [verification.md](verification.md) for evidence and [architecture-review.md](architecture-review.md) for responsibilities.
