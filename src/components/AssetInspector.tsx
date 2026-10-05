@@ -43,11 +43,13 @@ export function AssetInspector({
   onClose,
   onRetry,
   loadViewer = loadAssetViewer,
+  presentation = "sidebar",
 }: {
   inspection: Inspection;
   onClose(): void;
   onRetry(): void;
   loadViewer?: ViewerLoader;
+  presentation?: "sidebar" | "window";
 }) {
   const [viewerAttempt, setViewerAttempt] = useState(0);
   const AssetViewer = useMemo(
@@ -57,35 +59,37 @@ export function AssetInspector({
   const closeButton = useRef<HTMLButtonElement>(null);
   const selectedId = inspection.kind === "closed" ? "" : inspection.asset.id;
   useEffect(() => {
-    if (!selectedId) return;
+    if (!selectedId || presentation === "window") return;
     const previous = document.activeElement;
     closeButton.current?.focus();
     return () => {
       if (previous instanceof HTMLElement && previous.isConnected)
         previous.focus();
     };
-  }, [selectedId]);
+  }, [selectedId, presentation]);
   if (inspection.kind === "closed") return null;
   const asset = inspection.asset;
   return (
     <aside
-      className="inspector"
+      className={`inspector inspector-${presentation}`}
       aria-label="Asset inspector"
       onKeyDown={(event) => {
-        if (event.key === "Escape") onClose();
+        if (presentation === "sidebar" && event.key === "Escape") onClose();
       }}
     >
-      <div className="inspector-heading">
-        <span>ASSET DETAILS</span>
-        <button
-          ref={closeButton}
-          className="icon-button"
-          onClick={onClose}
-          aria-label="Close inspector"
-        >
-          <X size={20} />
-        </button>
-      </div>
+      {presentation === "sidebar" && (
+        <div className="inspector-heading">
+          <span>ASSET DETAILS</span>
+          <button
+            ref={closeButton}
+            className="icon-button"
+            onClick={onClose}
+            aria-label="Close inspector"
+          >
+            <X size={20} />
+          </button>
+        </div>
+      )}
       <div className="inspector-title">
         <span className="eyebrow">{asset.categories.join(" · ")}</span>
         <h2>{asset.name || "Unnamed type"}</h2>

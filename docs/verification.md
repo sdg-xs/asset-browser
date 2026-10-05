@@ -113,3 +113,11 @@ The renderer with most IFC-related growth, PID 8856, changed from 58.0 MiB priva
 During this run, first indexing took 13,412.1 ms and retry indexing took 13,521.9 ms. Geometry/property requests took 73.5 ms and 50.4 ms. Both produced the same 9,204-element counts, 1,019 types, 107 categories, two sensor meshes, 954 triangles and 15 property groups. Final console output was zero errors and warnings. Source selection to BS17 was used only to dispose BS19; BS17 was not parsed.
 
 Local artifacts under `output/playwright/`: `measure-browser-memory.ps1`, `bs19-browser-memory.jsonl`, `bs19-browser-memory-summary.json`, `memory-browser-process.json`, `memory-run-render-metrics.txt`, `memory-retry-render-metrics.txt`, and `bs19-fix1-representative.png`. The JSONL retains each sample's status, timestamps, PID/type and byte counts.
+
+## Centered card preview
+
+The card arrow is a separate, keyboard-accessible dialog control. It selects/highlights the same card while opening the existing geometry/property inspector in a centered modal; clicking the card body retains the side inspector. Grid and list modes support both actions. The popup uses a native dialog for keyboard focus containment, Escape closure, and focus return to the originating arrow.
+
+Focused regression: `npm test -- --run tests/library-ui.test.tsx tests/viewer-loader.test.tsx` passed 16 tests. The new test first failed because the arrow control did not exist, then passed for normal card inspection, centered preview parameters, selected-card feedback, close/focus return, list-mode expansion, and native cancel. Production build and strict typecheck passed.
+
+Production Chrome verified BS19 sensor occurrence 1118159 in the centered window: two meshes, 954 triangles, 16 property groups, selected card true, and no concurrent side inspector. At 1280x720 the dialog bounds were x80/y41, 1120x638. At 390x844 its width was366 and document width390, with no horizontal overflow. Escape closed it and restored focus to the card arrow. Normal card click still opened the side inspector and highlighted the card; the list-view arrow also reopened the centered geometry. Console reported zero errors or warnings. Screenshots: `output/playwright/asset-centered-preview-desktop.png` and `asset-centered-preview-mobile.png`, both visually inspected.

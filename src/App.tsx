@@ -24,6 +24,9 @@ export function App({ dependencies }: { dependencies?: Dependencies }) {
   const [search, setSearch] = useState("");
   const [mode, setMode] = useState<"grid" | "list">("grid");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [inspectionView, setInspectionView] = useState<"sidebar" | "window">(
+    "sidebar",
+  );
   const categoryToggle = useRef<HTMLButtonElement>(null);
   const [dialog, setDialog] = useState<"upload" | "remove" | null>(null);
   const [removing, setRemoving] = useState(false);
@@ -64,7 +67,7 @@ export function App({ dependencies }: { dependencies?: Dependencies }) {
   };
   return (
     <div
-      className={`app ${sidebarOpen ? "sidebar-open" : ""} ${selected ? "with-inspector" : ""}`}
+      className={`app ${sidebarOpen ? "sidebar-open" : ""} ${selected && inspectionView === "sidebar" ? "with-inspector" : ""}`}
     >
       <a className="skip-link" href="#catalog">
         Skip to asset types
@@ -258,7 +261,14 @@ export function App({ dependencies }: { dependencies?: Dependencies }) {
             modelName={library.model.name}
             selectedId={selected}
             mode={mode}
-            onSelect={library.inspect}
+            onSelect={(asset) => {
+              setInspectionView("sidebar");
+              library.inspect(asset);
+            }}
+            onExpand={(asset) => {
+              setInspectionView("window");
+              library.inspect(asset);
+            }}
           />
         )}
         {index && (
@@ -268,14 +278,33 @@ export function App({ dependencies }: { dependencies?: Dependencies }) {
           </footer>
         )}
       </main>
-      <AssetInspector
-        inspection={library.inspection}
-        onClose={library.closeInspector}
-        onRetry={() => {
-          if (library.inspection.kind !== "closed")
-            library.inspect(library.inspection.asset);
-        }}
-      />
+      {inspectionView === "sidebar" && (
+        <AssetInspector
+          inspection={library.inspection}
+          onClose={library.closeInspector}
+          onRetry={() => {
+            if (library.inspection.kind !== "closed")
+              library.inspect(library.inspection.asset);
+          }}
+        />
+      )}
+      {inspectionView === "window" && library.inspection.kind !== "closed" && (
+        <Dialog
+          title="Asset preview"
+          className="asset-preview-dialog"
+          onClose={library.closeInspector}
+        >
+          <AssetInspector
+            presentation="window"
+            inspection={library.inspection}
+            onClose={library.closeInspector}
+            onRetry={() => {
+              if (library.inspection.kind !== "closed")
+                library.inspect(library.inspection.asset);
+            }}
+          />
+        </Dialog>
+      )}
       {dialog === "upload" && (
         <UploadDialog
           onClose={() => setDialog(null)}

@@ -7,6 +7,7 @@ import {
   renderHook,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App.js";
@@ -87,6 +88,37 @@ function setup(models: LibraryModel[] = [model]) {
   return { api, worker, dependencies };
 }
 describe("catalog workspace", () => {
+  it("opens a centered preview from the card arrow while ordinary clicks keep the side inspector", async () => {
+    const { dependencies, worker } = setup();
+    render(<App dependencies={dependencies} />);
+    const card = await screen.findByRole("button", { name: "Inspect Sensor type" });
+    fireEvent.click(card);
+    await screen.findByText("Generic Hard Asset");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(card.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Close inspector" }));
+
+    const arrow = screen.getByRole("button", { name: "Open Sensor type in centered preview" });
+    arrow.focus();
+    fireEvent.click(arrow);
+    const popup = await screen.findByRole("dialog", { name: "Asset preview" });
+    await within(popup).findByText("Generic Hard Asset");
+    expect(within(popup).getByText(/No preview geometry/)).toBeTruthy();
+    expect(card.getAttribute("aria-pressed")).toBe("true");
+    expect(screen.queryByRole("button", { name: "Close inspector" })).toBeNull();
+    expect(worker.readProperties).toHaveBeenCalledTimes(2);
+    fireEvent.click(within(popup).getByRole("button", { name: "Close dialog" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.activeElement).toBe(arrow);
+    expect(card.getAttribute("aria-pressed")).toBe("false");
+
+    fireEvent.click(screen.getByRole("button", { name: "List view" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open Sensor type in centered preview" }));
+    const listPopup = await screen.findByRole("dialog", { name: "Asset preview" });
+    await within(listPopup).findByText("Generic Hard Asset");
+    fireEvent(listPopup, new Event("cancel", { cancelable: true }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
   it("preserves an uploaded model and selection when the initial inventory arrives late", async () => {
     const { dependencies, api } = setup();
     const inventory = deferred<LibraryModel[]>();

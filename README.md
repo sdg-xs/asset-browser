@@ -16,7 +16,7 @@ npm run build
 npm start
 ```
 
-The library selects BS19 initially when available. Choosing a source indexes it if needed; cached catalogs appear immediately. Select a category or search by type name, category, or IFC class. Switch between grid and list views, then select a card to open its properties and 3D inspector. The viewer opens the selected IFC source and tries other occurrences if the first has no supported geometry. Drag to orbit, scroll to zoom, and use Fit asset to restore framing. Preview placeholders indicate that geometry has not yet been loaded.
+The library selects BS19 initially when available. Choosing a source indexes it if needed; cached catalogs appear immediately. Select a category or search by type name, category, or IFC class. Switch between grid and list views, then select a card to open its properties and 3D side inspector. The arrow at the top right of each card selects that card and opens a centered window with its 3D geometry and read-only parameters. Close it with the X button or Escape; focus returns to the arrow. The viewer opens the selected IFC source and tries other occurrences if the first has no supported geometry. Drag to orbit, scroll to zoom, and use Fit asset to restore framing. Preview placeholders indicate that geometry has not yet been loaded.
 
 Add model accepts a single `.ifc` file. It saves the upload before browser processing starts, so a processing failure does not discard the file. Remove model hides it persistently and retains its original bytes. Categories use `Identity Data / Generic Hard Asset`, with instance precedence and type fallback only when the instance property is absent. Blank or `NA` values are excluded; excluded and untyped occurrence counts appear above the results.
 

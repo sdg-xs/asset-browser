@@ -6,11 +6,13 @@ export function Dialog({
   children,
   onClose,
   busy = false,
+  className,
 }: {
   title: string;
   children: ReactNode;
   onClose(): void;
   busy?: boolean;
+  className?: string;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
@@ -24,6 +26,7 @@ export function Dialog({
   return (
     <dialog
       ref={dialog}
+      className={className}
       aria-label={title}
       onCancel={(event) => {
         event.preventDefault();
