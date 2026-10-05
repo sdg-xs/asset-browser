@@ -8,3 +8,5 @@ output/
 *.log
 .env
 .env.local
+public/wasm/
+.playwright-cli/

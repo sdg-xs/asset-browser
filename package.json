@@ -7,6 +7,9 @@
     "node": ">=24"
   },
   "scripts": {
+    "copy-wasm": "node scripts/copy-wasm.mjs",
+    "predev": "npm run copy-wasm",
+    "prebuild": "npm run copy-wasm",
     "dev": "concurrently -k \"tsx watch server/index.ts\" \"vite --host 127.0.0.1\"",
     "dev:server": "tsx watch server/index.ts",
     "typecheck": "tsc --noEmit",
@@ -15,15 +18,25 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@thatopen/components": "3.4.8",
+    "@thatopen/fragments": "3.4.7",
+    "camera-controls": "3.1.2",
     "express": "5.2.1",
     "multer": "2.4.0",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "three": "0.186.1",
+    "web-ifc": "0.0.78",
     "zod": "4.6.5"
   },
   "devDependencies": {
     "@types/express": "5.0.6",
     "@types/multer": "2.3.0",
     "@types/node": "24.19.1",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
     "@types/supertest": "7.2.1",
+    "@types/three": "0.186.0",
     "concurrently": "10.0.5",
     "supertest": "7.3.1",
     "tsx": "4.23.15",
