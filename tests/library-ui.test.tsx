@@ -84,6 +84,33 @@ function setup(models: LibraryModel[] = [model]) {
   return { api, worker, dependencies };
 }
 describe("catalog workspace", () => {
+  it("preserves an uploaded model and selection when the initial inventory arrives late", async () => {
+    const { dependencies, api } = setup();
+    const inventory = deferred<LibraryModel[]>();
+    vi.mocked(api.list).mockReturnValueOnce(inventory.promise);
+    vi.mocked(api.upload).mockResolvedValueOnce({
+      ...model,
+      name: "uploaded.ifc",
+      source: "upload",
+    });
+    render(<App dependencies={dependencies} />);
+    await screen.findByText("Finding local IFC models…");
+    fireEvent.click(screen.getByRole("button", { name: "Add model" }));
+    fireEvent.change(screen.getByLabelText("IFC file"), {
+      target: { files: [new File(["fixture"], "uploaded.ifc")] },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Upload model" }));
+    await screen.findByRole("option", { name: "uploaded.ifc" });
+    await act(async () => inventory.resolve([]));
+    expect(
+      screen.getByRole("combobox", { name: "Source model" }).textContent,
+    ).toContain("uploaded.ifc");
+    expect(
+      screen.getByRole("button", { name: /Inspect Sensor type/ }),
+    ).toBeTruthy();
+    expect(screen.queryByText("Your library has no models")).toBeNull();
+    expect(screen.queryByText("Finding local IFC models…")).toBeNull();
+  });
   it("reopens the source when inspection is retried after a worker failure", async () => {
     const { dependencies, worker } = setup();
     vi.mocked(worker.readProperties).mockRejectedValueOnce(

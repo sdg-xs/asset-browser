@@ -22,6 +22,10 @@ Local evidence in ignored `output/playwright/`: `task3-desktop-catalog.png`, `ta
 
 ## Automated checks
 
+Task 3 review fix round 1 adds two focused regression cases. `npm test -- --run tests/library-ui.test.tsx tests/viewer-loader.test.tsx` passes nine tests, and `npm run build` passes including strict typechecking. The initial upload/list race first failed with `No models` after a successful upload; inventory generations now prevent the earlier list result or error from replacing newer state. A viewer module rejection first unmounted the test root. The inspector now catches that failure locally and keeps properties available.
+
+The targeted production Chrome fault probe also caught native dynamic-import failure caching: creating a new React lazy component alone did not recover. Retry now reads the publicly served `/asset-manifest.json`, validates a relative `assets/*.js` path, creates a fresh same-origin URL, and checks that the loaded module exports a viewer component. Development retry uses the local Vite source URL. With the first viewer chunk request aborted once, the catalog and all 16 property panels remained available. Clicking Retry viewer download fetched the manifest and cache-busted chunk, restored two meshes and 954 triangles, and removed the fallback. The console retained only the two intentional failure entries, with no additional error on recovery. Evidence: `output/playwright/task3-fix1-download-failure.yml`, `task3-fix1-retry-requests.txt`, and `task3-fix1-recovered-viewer.png`. Unchanged parser and storage suites were not rerun in this fix round.
+
 - `npm test`: 36 passing tests (26 service tests; four catalog policy tests; five actual IFC-reader tests; one viewer lifecycle test).
 - `npm run build`: strict TypeScript, server compilation and production Vite build pass.
 - Catalog tests first failed because `catalog.ts` did not exist. Actual IFC-reader tests first failed because `reader.ts` did not exist. The real fixture additionally caught the published `FlatMesh.delete()` declaration mismatch and malformed-header parser error; both are corrected.

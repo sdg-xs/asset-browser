@@ -56,6 +56,7 @@ export function useLibrary(dependencies: Dependencies = defaults) {
   const client = useRef<LibraryWorker | null>(null);
   const modelGeneration = useRef(0);
   const selectionGeneration = useRef(0);
+  const inventoryGeneration = useRef(0);
   const openRequest = useRef<Promise<CatalogIndex> | null>(null);
   const work = useRef<Promise<unknown>>(Promise.resolve());
   const alive = useRef(true);
@@ -79,10 +80,11 @@ export function useLibrary(dependencies: Dependencies = defaults) {
     [invalidate],
   );
   const refresh = useCallback(async () => {
+    const current = ++inventoryGeneration.current;
     setInventory({ kind: "busy", message: "Finding local IFC models…" });
     try {
       const found = await dependencies.api.list();
-      if (!alive.current) return;
+      if (!alive.current || current !== inventoryGeneration.current) return;
       setModels(found);
       setInventory({ kind: "ready" });
       chooseModel(
@@ -92,7 +94,7 @@ export function useLibrary(dependencies: Dependencies = defaults) {
         )?.id ?? "",
       );
     } catch (error) {
-      if (alive.current)
+      if (alive.current && current === inventoryGeneration.current)
         setInventory({ kind: "failed", message: message(error) });
     }
   }, [dependencies, chooseModel]);
@@ -102,6 +104,7 @@ export function useLibrary(dependencies: Dependencies = defaults) {
     void refresh();
     return () => {
       alive.current = false;
+      inventoryGeneration.current++;
       invalidate();
     };
   }, [dependencies, refresh, invalidate]);
@@ -260,6 +263,8 @@ export function useLibrary(dependencies: Dependencies = defaults) {
       throw error;
     }
     if (!alive.current) return;
+    inventoryGeneration.current++;
+    setInventory({ kind: "ready" });
     const remaining = models.filter((item) => item.id !== removed);
     setModels(remaining);
     chooseModel(
@@ -273,6 +278,8 @@ export function useLibrary(dependencies: Dependencies = defaults) {
   const upload = async (file: File, onProgress: (percent: number) => void) => {
     const saved = await dependencies.api.upload(file, onProgress);
     if (!alive.current) return;
+    inventoryGeneration.current++;
+    setInventory({ kind: "ready" });
     setModels((previous) => [...previous, saved]);
     chooseModel(saved.id);
   };

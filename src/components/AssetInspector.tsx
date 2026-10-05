@@ -1,19 +1,59 @@
-import { lazy, Suspense, useEffect, useRef } from "react";
+import {
+  Component,
+  lazy,
+  Suspense,
+  useEffect,
+  useRef,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import { X, Box } from "lucide-react";
 import type { Inspection } from "../library/useLibrary.js";
-const AssetViewer = lazy(async () => ({
-  default: (await import("../viewer/AssetViewer.js")).AssetViewer,
-}));
+import { loadAssetViewer } from "../viewer/load-viewer.js";
+export type ViewerLoader = typeof loadAssetViewer;
+
+class ViewerBoundary extends Component<
+  { children: ReactNode; onRetry(): void },
+  { failed: boolean }
+> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  render() {
+    if (this.state.failed)
+      return (
+        <div className="preview-message" role="alert">
+          <p>
+            The 3D viewer could not load. Check that the local library service
+            is running, then retry the download.
+          </p>
+          <button onClick={this.props.onRetry}>Retry viewer download</button>
+        </div>
+      );
+    return this.props.children;
+  }
+}
 
 export function AssetInspector({
   inspection,
   onClose,
   onRetry,
+  loadViewer = loadAssetViewer,
 }: {
   inspection: Inspection;
   onClose(): void;
   onRetry(): void;
+  loadViewer?: ViewerLoader;
 }) {
+  const [viewerAttempt, setViewerAttempt] = useState(0);
+  const AssetViewer = useMemo(
+    () => lazy(() => loadViewer(viewerAttempt)),
+    [loadViewer, viewerAttempt],
+  );
   const closeButton = useRef<HTMLButtonElement>(null);
   const selectedId = inspection.kind === "closed" ? "" : inspection.asset.id;
   useEffect(() => {
@@ -67,13 +107,18 @@ export function AssetInspector({
         <>
           <div className="preview">
             {inspection.geometry ? (
-              <Suspense
-                fallback={
-                  <div className="preview-message">Starting 3D viewer…</div>
-                }
+              <ViewerBoundary
+                key={viewerAttempt}
+                onRetry={() => setViewerAttempt((attempt) => attempt + 1)}
               >
-                <AssetViewer geometry={inspection.geometry} />
-              </Suspense>
+                <Suspense
+                  fallback={
+                    <div className="preview-message">Starting 3D viewer…</div>
+                  }
+                >
+                  <AssetViewer geometry={inspection.geometry} />
+                </Suspense>
+              </ViewerBoundary>
             ) : (
               <div className="preview-message">
                 <Box size={32} />
