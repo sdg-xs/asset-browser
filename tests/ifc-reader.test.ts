@@ -6,6 +6,19 @@ const model = { id: 'b3907523-463f-414b-8235-1d5e1cce0454', fingerprint: 'fixtur
 let reader: IfcReader | undefined;
 afterEach(() => reader?.dispose());
 describe('actual IFC4 extraction', () => {
+  it.each(['conflicting', 'unsupported'])('ignores %s type classifications when every instance overrides them', async kind => {
+    reader = new IfcReader();
+    await reader.initialize();
+    let fixture = await readFile(new URL('./fixtures/assets.ifc', import.meta.url), 'utf8');
+    fixture = kind === 'conflicting'
+      ? fixture.replace("'Identity Data',$,(#40)", "'Identity Data',$,(#40,#44)")
+      : fixture.replace("IFCPROPERTYSINGLEVALUE('Generic Hard Asset',$,IFCLABEL('Air quality sensor'),$)", "IFCPROPERTYENUMERATEDVALUE('Generic Hard Asset',$,(IFCLABEL('Air quality sensor')),$)");
+    const allOverridden = fixture.replace('(#30,#33),#45', '(#30,#31,#33),#45');
+    const index = reader.open(new TextEncoder().encode(allOverridden), model);
+    expect(index.stats).toEqual({ elements: 5, classified: 2, excluded: 2, untyped: 1 });
+    expect(index.types[0]?.categories).toEqual(['Temperature sensor']);
+    expect(() => reader?.open(new TextEncoder().encode(fixture), model)).toThrow(/Conflicting|Unsupported/);
+  });
   it('uses relation references, exact Psets, fallback and real occurrence geometry', async () => {
     reader = new IfcReader();
     await reader.initialize();

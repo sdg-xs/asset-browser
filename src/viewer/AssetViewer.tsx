@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import * as OBC from '@thatopen/components';
 import * as THREE from 'three';
 import type { PreviewGeometry } from '../../shared/contracts.js';
+import { createPreviewWorld } from './create-preview-world.js';
 
 export function AssetViewer({ geometry }: { geometry: PreviewGeometry }) {
   const container = useRef<HTMLDivElement>(null);
@@ -16,10 +17,7 @@ export function AssetViewer({ geometry }: { geometry: PreviewGeometry }) {
     let resize: ResizeObserver | undefined;
     setError(null);
     try {
-      const world = components.get(OBC.Worlds).create<OBC.SimpleScene, OBC.SimpleCamera, OBC.SimpleRenderer>();
-      world.scene = new OBC.SimpleScene(components);
-      world.renderer = new OBC.SimpleRenderer(components, host, { antialias: true });
-      world.camera = new OBC.SimpleCamera(components);
+      const world = createPreviewWorld({ components, createRenderer: () => new OBC.SimpleRenderer(components, host, { antialias: true }) });
       world.scene.setup({ backgroundColor: new THREE.Color('#eef2f3') });
       const group = new THREE.Group();
       for (const piece of geometry.meshes) {

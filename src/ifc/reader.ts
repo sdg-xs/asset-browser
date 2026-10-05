@@ -93,9 +93,10 @@ export class IfcReader {
           type = this.typeEntities.get(typeId) ?? this.entity(typeId);
           this.typeEntities.set(typeId, type);
         }
+        const instanceCategory = this.category(this.occurrenceSets.get(elementId) ?? []);
         candidates.push({ elementId,
-          instanceCategory: this.category(this.occurrenceSets.get(elementId) ?? []),
-          typeCategory: this.category(type?.HasPropertySets?.map(ref => ref.value) ?? []),
+          instanceCategory,
+          typeCategory: instanceCategory === undefined ? this.category(type?.HasPropertySets?.map(ref => ref.value) ?? []) : undefined,
           type: type?.GlobalId?.value ? { globalId: type.GlobalId.value, name: type.Name?.value ?? '', ifcClass: this.api.GetNameFromTypeCode(type.type).toUpperCase() } : null,
         });
       }
