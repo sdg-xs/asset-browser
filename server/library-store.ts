@@ -277,6 +277,26 @@ export class LibraryStore {
   resolveModelFile(id: string): Promise<string> {
     return this.serialized(async () => (await this.findVisible(id)).path);
   }
+  openModelFile(id: string, expectedFingerprint?: string) {
+    return this.serialized(async () => {
+      const entry = await this.findVisible(id);
+      const file = await open(entry.path, "r");
+      try {
+        const info = await file.stat();
+        const fingerprint = `${info.size}:${info.mtimeMs}`;
+        if (expectedFingerprint !== undefined && expectedFingerprint !== fingerprint)
+          throw new LibraryError(
+            "SOURCE_CHANGED",
+            "The source file changed. Load its current revision again.",
+            409,
+          );
+        return { file, fingerprint, size: info.size };
+      } catch (error) {
+        await file.close();
+        throw error;
+      }
+    });
+  }
   async createUploadDestination(): Promise<string> {
     return join(this.dataRoot, "staging", `${randomUUID()}.tmp`);
   }

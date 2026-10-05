@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { resolve, join } from "node:path";
+import { pipeline } from "node:stream";
 import express, {
   type ErrorRequestHandler,
   type RequestHandler,
 } from "express";
 import multer from "multer";
-import { ZodError } from "zod";
+import { z, ZodError } from "zod";
 import { CatalogIndexSchema } from "../shared/contracts.js";
 import { DEFAULT_MAX_UPLOAD_BYTES } from "./config.js";
 import {
@@ -89,9 +90,15 @@ export async function createApp(
     response.json(await store.listModels());
   });
   app.get("/api/models/:id/file", async (request, response, next) => {
-    const path = await store.resolveModelFile(request.params.id);
+    const { file, fingerprint, size } = await store.openModelFile(
+      request.params.id,
+      request.get("X-IFC-Fingerprint"),
+    );
     response.type("text/plain");
-    response.sendFile(path, (error) => {
+    response.setHeader("X-IFC-Fingerprint", fingerprint);
+    response.setHeader("Cache-Control", "no-store");
+    response.setHeader("Content-Length", size);
+    pipeline(file.createReadStream(), response, (error) => {
       if (error) next(error);
     });
   });
@@ -150,6 +157,11 @@ export async function createApp(
       response
         .status(error.status)
         .json({ error: { code: error.code, message: error.message } });
+    } else if (z.object({ type: z.literal("entity.too.large") }).safeParse(error).success) {
+      response.status(413).json({ error: {
+        code: "REQUEST_TOO_LARGE",
+        message: "The JSON request exceeds the 32 MiB limit.",
+      } });
     } else if (error instanceof ZodError || error instanceof SyntaxError) {
       response
         .status(400)

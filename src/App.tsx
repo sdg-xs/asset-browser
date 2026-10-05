@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   Boxes,
   Grid2X2,
@@ -24,6 +24,7 @@ export function App({ dependencies }: { dependencies?: Dependencies }) {
   const [search, setSearch] = useState("");
   const [mode, setMode] = useState<"grid" | "list">("grid");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const categoryToggle = useRef<HTMLButtonElement>(null);
   const [dialog, setDialog] = useState<"upload" | "remove" | null>(null);
   const [removing, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState("");
@@ -94,6 +95,7 @@ export function App({ dependencies }: { dependencies?: Dependencies }) {
         onCategory={(value) => {
           setCategory(value);
           setSidebarOpen(false);
+          if (sidebarOpen) categoryToggle.current?.focus();
         }}
         onModel={chooseModel}
       />
@@ -133,6 +135,7 @@ export function App({ dependencies }: { dependencies?: Dependencies }) {
         <div className="toolbar">
           <button
             className="mobile-filter icon-button"
+            ref={categoryToggle}
             aria-label="Toggle collections and categories"
             aria-expanded={sidebarOpen}
             onClick={() => setSidebarOpen(!sidebarOpen)}

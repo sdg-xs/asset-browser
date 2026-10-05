@@ -8,6 +8,7 @@ import type {
 } from "../../shared/contracts.js";
 import { IfcWorkerClient } from "../ifc/client.js";
 import { libraryApi, type LibraryApi } from "./api.js";
+import { SourceRevisionError } from "../../shared/revision.js";
 
 export type LibraryWorker = Pick<
   IfcWorkerClient,
@@ -79,14 +80,20 @@ export function useLibrary(dependencies: Dependencies = defaults) {
     },
     [invalidate],
   );
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (preserveSelection = false) => {
     const current = ++inventoryGeneration.current;
     setInventory({ kind: "busy", message: "Finding local IFC models…" });
     try {
       const found = await dependencies.api.list();
       if (!alive.current || current !== inventoryGeneration.current) return;
-      setModels(found);
+      setModels((previous) => found.map((item) => {
+        const known = previous.find((candidate) =>
+          candidate.id === item.id && candidate.fingerprint === item.fingerprint,
+        );
+        return { ...item, index: item.index ?? known?.index ?? null };
+      }));
       setInventory({ kind: "ready" });
+      if (preserveSelection) return;
       chooseModel(
         (
           found.find((item) => item.name.toUpperCase() === "BS19.IFC") ??
@@ -117,48 +124,68 @@ export function useLibrary(dependencies: Dependencies = defaults) {
       const worker = client.current;
       if (!worker)
         return Promise.reject(new Error("IFC worker is unavailable."));
-      const request = worker
-        .openModel({
-          model: source,
-          fileUrl: `/api/models/${source.id}/file`,
-          onProgress: (progress) => {
-            if (current === modelGeneration.current && alive.current)
-              setProcessing({ kind: "busy", message: progress });
-          },
-        })
-        .then(async (result) => {
-          if (current !== modelGeneration.current || !alive.current)
-            return result;
-          setModels((previous) =>
-            previous.map((item) =>
-              item.id === source.id ? { ...item, index: result } : item,
-            ),
-          );
-          setProcessing({ kind: "ready" });
+      const valid = () => current === modelGeneration.current && alive.current;
+      const load = async (
+        candidate: LibraryModel,
+        canRefresh: boolean,
+      ): Promise<CatalogIndex> => {
+        try {
+          const result = await worker.openModel({
+            model: candidate,
+            fileUrl: `/api/models/${candidate.id}/file`,
+            onProgress: (progress) => {
+              if (valid()) setProcessing({ kind: "busy", message: progress });
+            },
+          });
+          if (!valid()) return result;
           try {
             await dependencies.api.saveIndex(result);
           } catch (error) {
-            if (current === modelGeneration.current && alive.current)
-              setNotice(
-                `Catalog is available for this session. Saving failed: ${message(error)}`,
-              );
+            if (error instanceof SourceRevisionError) throw error;
+            if (valid()) setNotice(
+              `Catalog is available for this session. Saving failed: ${message(error)}`,
+            );
+          }
+          if (valid()) {
+            setModels((previous) => previous.map((item) =>
+              item.id === candidate.id ? { ...candidate, index: result } : item,
+            ));
+            setProcessing({ kind: "ready" });
           }
           return result;
-        })
-        .catch((error: unknown) => {
-          if (current === modelGeneration.current && alive.current) {
-            openRequest.current = null;
-            setProcessing({ kind: "failed", message: message(error) });
-          }
-          throw error;
-        });
+        } catch (error) {
+          if (!(error instanceof SourceRevisionError) || !valid()) throw error;
+          worker.dispose();
+          setModels((previous) => previous.map((item) =>
+            item.id === candidate.id ? { ...item, index: null } : item,
+          ));
+          if (!canRefresh) throw error;
+          setProcessing({ kind: "busy", message: "Source changed. Loading the current revision…" });
+          const inventoryVersion = ++inventoryGeneration.current;
+          const found = await dependencies.api.list();
+          if (!valid() || inventoryVersion !== inventoryGeneration.current)
+            throw new DOMException("IFC processing cancelled.", "AbortError");
+          setModels(found);
+          const refreshed = found.find((item) => item.id === candidate.id);
+          if (!refreshed) throw new Error("This source is no longer available in the library.");
+          return load(refreshed, false);
+        }
+      };
+      const request = load(source, true).catch((error: unknown) => {
+        if (valid()) {
+          openRequest.current = null;
+          setProcessing({ kind: "failed", message: message(error) });
+        }
+        throw error;
+      });
       openRequest.current = request;
       return request;
     },
     [dependencies],
   );
   useEffect(() => {
-    if (model && !model.index) void open(model).catch(() => {});
+    if (model && !model.index && processing.kind !== "failed")
+      void open(model).catch(() => {});
   }, [model, open]);
 
   const inspect = (asset: AssetType) => {
@@ -175,21 +202,25 @@ export function useLibrary(dependencies: Dependencies = defaults) {
       .then(async () => {
         if (!valid()) return;
         try {
-          await open(model);
+          const catalog = await open(model);
           if (!valid() || !client.current) return;
+          const currentAsset = catalog.types.find((type) => type.id === asset.id);
+          if (!currentAsset) throw new Error(
+            "This type is absent from the current source revision. Choose a current asset type.",
+          );
           let properties = await client.current.readProperties({
             modelId: model.id,
-            elementId: asset.representativeId,
+            elementId: currentAsset.representativeId,
           });
           if (!valid()) return;
           let geometry: PreviewGeometry | null = null;
-          let elementId = asset.representativeId;
+          let elementId = currentAsset.representativeId;
           let geometryNotice =
             "No preview geometry is available for this type.";
           for (const occurrence of [
-            asset.representativeId,
-            ...asset.occurrenceIds.filter(
-              (id) => id !== asset.representativeId,
+            currentAsset.representativeId,
+            ...currentAsset.occurrenceIds.filter(
+              (id) => id !== currentAsset.representativeId,
             ),
           ]) {
             if (!valid()) return;
@@ -209,7 +240,7 @@ export function useLibrary(dependencies: Dependencies = defaults) {
             }
           }
           if (!valid()) return;
-          if (elementId !== asset.representativeId)
+          if (elementId !== currentAsset.representativeId)
             properties = await client.current.readProperties({
               modelId: model.id,
               elementId,
@@ -221,7 +252,7 @@ export function useLibrary(dependencies: Dependencies = defaults) {
           if (valid())
             setInspection({
               kind: "ready",
-              asset,
+              asset: currentAsset,
               properties,
               geometry,
               notice: geometryNotice,
@@ -282,6 +313,7 @@ export function useLibrary(dependencies: Dependencies = defaults) {
     setInventory({ kind: "ready" });
     setModels((previous) => [...previous, saved]);
     chooseModel(saved.id);
+    await refresh(true);
   };
   return {
     models,

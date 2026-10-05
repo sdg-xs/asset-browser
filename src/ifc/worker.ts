@@ -1,6 +1,8 @@
 /// <reference lib="webworker" />
 import { IfcReader } from './reader.js';
 import { RequestSchema, type WorkerResponse } from './protocol.js';
+import { downloadModel } from './download.js';
+import { SourceRevisionError } from '../../shared/revision.js';
 
 const reader = new IfcReader();
 let openedModel: string | null = null;
@@ -9,7 +11,7 @@ const send = (response: WorkerResponse, transfer: Transferable[] = []) => postMe
 self.onmessage = async (event: MessageEvent<unknown>) => {
   const parsed = RequestSchema.safeParse(event.data);
   if (!parsed.success) {
-    send({ kind: 'error', requestId: -1, message: 'Invalid IFC worker request.' });
+    send({ kind: 'error', requestId: -1, message: 'Invalid IFC worker request.', code: 'IFC_ERROR' });
     return;
   }
   const request = parsed.data;
@@ -19,9 +21,7 @@ self.onmessage = async (event: MessageEvent<unknown>) => {
         const url = new URL(request.fileUrl);
         if (url.origin !== self.location.origin) throw new Error('IFC files must be loaded from this application.');
         send({ kind: 'progress', requestId: request.requestId, message: 'Downloading IFC to the browser worker' });
-        const response = await fetch(url);
-        if (!response.ok) throw new Error(`Unable to load IFC: HTTP ${response.status}.`);
-        const bytes = new Uint8Array(await response.arrayBuffer());
+        const bytes = await downloadModel(url, request.model);
         await reader.initialize(request.wasmPath);
         const value = reader.open(bytes, request.model, message => send({ kind: 'progress', requestId: request.requestId, message }));
         openedModel = request.model.id;
@@ -41,6 +41,6 @@ self.onmessage = async (event: MessageEvent<unknown>) => {
       }
     }
   } catch (error) {
-    send({ kind: 'error', requestId: request.requestId, message: error instanceof Error ? error.message : 'IFC processing failed.' });
+    send({ kind: 'error', requestId: request.requestId, message: error instanceof Error ? error.message : 'IFC processing failed.', code: error instanceof SourceRevisionError ? 'SOURCE_CHANGED' : 'IFC_ERROR' });
   }
 };

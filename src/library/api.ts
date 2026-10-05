@@ -6,10 +6,12 @@ import {
   type CatalogIndex,
   type LibraryModel,
 } from "../../shared/contracts.js";
+import { SourceRevisionError } from '../../shared/revision.js';
 
 async function responseData(response: Response): Promise<unknown> {
   if (response.status === 204) return undefined;
   const body: unknown = await response.json();
+  if (response.status === 409) throw new SourceRevisionError();
   if (!response.ok)
     throw new Error(
       ApiErrorSchema.safeParse(body).data?.error.message ??

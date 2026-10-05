@@ -41,17 +41,17 @@ npm run dev
 
 Keep the managed folder outside the original property folders. Removing a model persistently hides it, preserves its IFC bytes, and blocks its file route. Uploaded file names are display labels; managed disk names use random IDs, so equally named uploads stay separate.
 
-The revision fingerprint is file size plus filesystem modification time in milliseconds. A changed fingerprint clears the derived index while keeping model identity. This MVP does not hash every large IFC file; external changes that preserve both size and modification time are not detectable. State operations are serialized within the single service process, and state publication uses temporary-file rename. Run one service process per managed data folder.
+The revision fingerprint is file size plus filesystem modification time in milliseconds. A changed fingerprint clears the derived index while keeping model identity. Worker downloads send the expected fingerprint; the service checks the opened disk file before streaming. A conflict reloads metadata and indexes the current source before inspecting its current type and occurrence IDs. This MVP does not hash every large IFC file; external changes that preserve both size and modification time are not detectable. State operations are serialized within the single service process, and state publication uses temporary-file rename. Run one service process per managed data folder.
 
 API routes return schema-validated records from `shared/contracts.ts`:
 
 - `GET /api/health` returns `{ "status": "ok" }`.
 - `GET /api/models` returns the visible model array, with `index: null` until indexed.
-- `GET /api/models/:id/file` streams the IFC source by persisted model ID.
+- `GET /api/models/:id/file` streams the IFC source by persisted model ID. `X-IFC-Fingerprint` binds a download to an expected revision; a mismatch returns structured `SOURCE_CHANGED` HTTP 409. Successful responses include the current fingerprint and disable caching.
 - `POST /api/models` accepts one multipart `file` and returns its saved model with status 201.
 - `DELETE /api/models/:id` hides the model and returns status 204.
 - `PUT /api/models/:id/index` saves a matching-model, matching-fingerprint catalog index and returns the updated model.
 
-Errors return `{ "error": { "code": "...", "message": "..." } }`. Requests cannot supply filesystem paths. Mutations require a matching localhost origin when the Origin header is present. Invalid Host headers and cross-site mutations are rejected. Upload validation checks a bounded STEP/IFC header and completion marker before publishing the file; actual IFC parsing remains the browser's responsibility.
+Errors return `{ "error": { "code": "...", "message": "..." } }`. JSON bodies over 32 MiB return HTTP 413 with code `REQUEST_TOO_LARGE`. Requests cannot supply filesystem paths. Mutations require a matching localhost origin when the Origin header is present. Invalid Host headers and cross-site mutations are rejected. Upload validation checks a bounded STEP/IFC header and completion marker before publishing the file; actual IFC parsing remains the browser's responsibility.
 
 BS19, approximately 117 MiB, was verified in Chrome with 1,019 types and 107 categories. Prior measured indexing runs took 13–21 seconds on this machine. The viewer loads separately from the approximately 309 kB application script; its roughly 5.97 MB SDK chunk still triggers Vite's size warning. These measurements do not establish support for the 520 MiB HG62 source or every IFC exporter. See [verification evidence and limits](docs/verification.md). FM import, placement, editing, RFA and Nucleus are outside this MVP.

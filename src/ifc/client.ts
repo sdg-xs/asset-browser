@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { CatalogIndexSchema, PreviewGeometrySchema, PropertyGroupSchema, type CatalogIndex, type LibraryModel, type PreviewGeometry, type PropertyGroup } from '../../shared/contracts.js';
 import { RequestSchema, ResponseSchema, type WorkerRequest } from './protocol.js';
 import type { Progress } from './reader.js';
+import { SourceRevisionError } from '../../shared/revision.js';
 
 interface Pending { resolve: (value: unknown) => void; reject: (error: Error) => void; onProgress: Progress }
 type RequestInput = WorkerRequest extends infer R ? R extends WorkerRequest ? Omit<R, 'requestId'> : never : never;
@@ -24,7 +25,7 @@ export class IfcWorkerClient {
       if (!pending) return;
       if (response.kind === 'progress') { pending.onProgress(response.message); return; }
       this.pending.delete(response.requestId);
-      if (response.kind === 'error') pending.reject(new Error(response.message));
+      if (response.kind === 'error') pending.reject(response.code === 'SOURCE_CHANGED' ? new SourceRevisionError() : new Error(response.message));
       else pending.resolve(response.value);
     };
     worker.onerror = event => this.stop(new Error(event.message || 'IFC worker failed. Retry opening the model.'));

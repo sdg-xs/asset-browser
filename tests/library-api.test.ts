@@ -1,7 +1,7 @@
 import request from "supertest";
 import { createServer } from "vite";
 import viteConfig from "../vite.config.js";
-import { readFile, readdir } from "node:fs/promises";
+import { readFile, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../server/app.js";
@@ -10,6 +10,9 @@ import {
   LibraryModelSchema,
 } from "../shared/contracts.js";
 import { emptyIndex, libraryFixture } from "./library-fixtures.js";
+import { downloadModel } from '../src/ifc/download.js';
+import { IfcReader } from '../src/ifc/reader.js';
+import { SourceRevisionError } from '../shared/revision.js';
 
 describe("localhost library API", () => {
   let fixture: Awaited<ReturnType<typeof libraryFixture>>;
@@ -35,6 +38,60 @@ describe("localhost library API", () => {
       .get(`/api/models/${model.id}/file`)
       .expect(200);
     expect(response.text).toBe(fixture.ifc.toString());
+  });
+
+  it("rejects a cached fingerprint against the current disk file before streaming replacement bytes", async () => {
+    const model = await firstModel();
+    await request(app).put(`/api/models/${model.id}/index`).send(emptyIndex(model)).expect(200);
+    const replacement = await readFile(new URL('./fixtures/assets.ifc', import.meta.url));
+    await writeFile(fixture.sourcePath, replacement);
+    const stale = await request(app).get(`/api/models/${model.id}/file`)
+      .set('X-IFC-Fingerprint', model.fingerprint).expect(409);
+    expect(stale.body).toMatchObject({ error: { code: 'SOURCE_CHANGED' } });
+    const current = await firstModel();
+    expect(current.index).toBeNull();
+    expect(current.fingerprint).not.toBe(model.fingerprint);
+    const fresh = await request(app).get(`/api/models/${model.id}/file`)
+      .set('X-IFC-Fingerprint', current.fingerprint).expect(200);
+    expect(fresh.text).toBe(replacement.toString());
+    expect(fresh.headers['x-ifc-fingerprint']).toBe(current.fingerprint);
+  });
+
+  it("returns a structured 413 for JSON larger than 32 MiB", async () => {
+    const model = await firstModel();
+    const response = await request(app).put(`/api/models/${model.id}/index`)
+      .send({ padding: 'x'.repeat(32 * 1024 * 1024) }).expect(413);
+    expect(response.body).toEqual({ error: { code: 'REQUEST_TOO_LARGE', message: 'The JSON request exceeds the 32 MiB limit.' } });
+  });
+
+  it('binds the worker download to a real temporary IFC revision before parsing replacement types', async () => {
+    const original = await readFile(new URL('./fixtures/assets.ifc', import.meta.url), 'utf8');
+    await writeFile(fixture.sourcePath, original);
+    const reader = new IfcReader();
+    const server = app.listen(0, '127.0.0.1');
+    await new Promise<void>(resolve => server.once('listening', resolve));
+    try {
+      await reader.initialize();
+      const address = server.address();
+      if (!address || typeof address === 'string') throw new Error('Expected listening server');
+      const source = await firstModel();
+      const url = `http://127.0.0.1:${address.port}/api/models/${source.id}/file`;
+      const cached = reader.open(await downloadModel(url, source), source);
+      await request(app).put(`/api/models/${source.id}/index`).send(cached).expect(200);
+      const replacement = original.replaceAll('Sensor type', 'Replacement pump type').replaceAll('#30', '#130').replaceAll('#31', '#131');
+      await writeFile(fixture.sourcePath, replacement);
+      await expect(downloadModel(url, source)).rejects.toBeInstanceOf(SourceRevisionError);
+      const current = await firstModel();
+      expect(current.index).toBeNull();
+      const catalog = reader.open(await downloadModel(url, current), current);
+      expect(catalog.fingerprint).toBe(current.fingerprint);
+      expect(catalog.types[0]).toMatchObject({ name: 'Replacement pump type', representativeId: 130, occurrenceIds: [130, 131] });
+      expect(reader.properties(130).length).toBeGreaterThan(0);
+      expect(reader.geometry(130).meshes.length).toBeGreaterThan(0);
+    } finally {
+      reader.dispose();
+      await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+    }
   });
 
   it("persists multipart uploads across app restarts", async () => {
