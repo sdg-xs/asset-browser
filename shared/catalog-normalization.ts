@@ -1,5 +1,5 @@
 import type { NormalizedValue } from "./catalog-library.js";
-const missing = /^(?:n\/?a|none|null|undefined|-)$/i;
+const missing = /^(?:n[/-]?a|none|null|undefined|-)$/i;
 export function identityValue(value: string): string {
   const trimmed = value.trim();
   return !trimmed || missing.test(trimmed) || /^revit$/i.test(trimmed)

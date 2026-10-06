@@ -88,3 +88,22 @@ Owned files: shared/catalog-library.ts, shared/catalog-normalization.ts, shared/
 Applied TypeScript/type-system discipline: authoritative Zod-derived contracts, unknown request validation at boundary, discriminated variants, exhaustive command switch, no any/unsafe casts/non-null assertions. Formatted using temporary pinned Prettier execution without modifying package.json/package-lock.json or adding dependencies. Reviewed all owned modules and staged whitespace diff. Fixed self-review findings concerning unit prefix case, duplicate identity evidence, category alias consolidation, and alias-equivalent membership. Retained revision-bound references and isolated error module to avoid import cycles.
 
 No unresolved correctness concerns. Inventory-driven geometry availability, stale snapshot rejection against inventory, persistence serialization, worker extraction, and UI remain downstream tasks by design. Do not treat `source.current` or an approved catalog lifecycle alone as permission to preview a refreshed source reference.
+
+## Fix round 1
+
+Addressed all three Important findings and the bounded level-filter finding from task-1-review.md.
+
+- Publication now excludes every source key that has a staff override from source fallback evidence. An explicit missing width override therefore leaves a generic entry incomplete even when a confirmed mapped source width is consistent. Other known overrides or unoverridden mapped fields can still satisfy publication.
+- Missing-marker normalization accepts the required `n-a` form, case-insensitively, for product identity and observed values. Staff confirmation does not turn that marker into known identity or strong duplicate identity evidence.
+- Merge clones absorbed source references before adding them to the target. Combining another partition widens only the target reference. Archived variants retain their original memberships, including after restoration.
+- Spatial level filtering uses anchored names such as Level, Building Level, and Reference Level rather than matching every occurrence of the word level. Sound Pressure Level remains a reusable field suggestion. Other existing exclusions retain their prior behavior.
+
+Regression command: `npm test -- --run tests/catalog-library.test.ts`.
+
+RED: `30 tests | 4 failed | 26 passed`. All four failures reproduced the review findings: missing-overridden width produced no publication issue; `n-a` returned text; the first archived split membership widened from `[1]` to `[1,2]`; Sound Pressure Level yielded no suggestion.
+
+GREEN: `1 file passed, 30 tests passed`, 574ms. The regressions verify the actual approval command, absent identity in publication/duplicate evidence, merge followed by restoration of both original variants, and both template/entry suggestion filtering. Strict `npm run typecheck` passed.
+
+Self-review: changes remain limited to catalog-normalization, catalog-observations, catalog-review, catalog-rules, focused tests, and this report. No interface changes, runtime dependencies, or unrelated files. Newly merged references have no shared mutable occurrence arrays with absorbed entries. Missing override precedence applies to any overridden key, not only width. No unresolved correctness concerns.
+
+Final full validation: `npm test -- --maxWorkers=2` passed all 8 test files and 85 tests in 55.49s. The existing viewer dependency emitted THREE_CJS_DEPRECATED; the focused domain suite emitted no warnings. `git diff --check` passed.

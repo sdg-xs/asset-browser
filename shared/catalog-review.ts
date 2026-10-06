@@ -38,6 +38,7 @@ export function entryIssues(
   const knownSuggestion = entryFieldSuggestions(state, entry).some(
     (suggestion) =>
       suggestion.status === "consistent" &&
+      !Object.hasOwn(definition.specifications, suggestion.key) &&
       mappings.some((mapping) => mapping.key === suggestion.key),
   );
   if (

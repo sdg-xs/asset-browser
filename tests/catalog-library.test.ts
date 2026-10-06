@@ -526,3 +526,187 @@ describe("confirmed duplicate identity evidence", () => {
     );
   });
 });
+
+describe("review round 1 regressions", () => {
+  it("does not publish a source specification explicitly overridden as missing", () => {
+    let state = imported();
+    const category = state.categories[0];
+    if (!category) throw Error("Missing category");
+    state = applyLibraryCommand(state, {
+      kind: "template",
+      expectedRevision: state.revision,
+      categoryId: category.id,
+      mappings: [
+        {
+          key: "Dimensions/Width",
+          label: "Width",
+          dataKind: "number",
+          canonicalUnit: "m",
+          role: "specification",
+        },
+      ],
+    });
+    expect(entryIssues(state, first(state))).toEqual([]);
+    state = edit(state, {
+      ...first(state).definition,
+      specifications: { "Dimensions/Width": { kind: "missing" } },
+    });
+    expect(entryIssues(state, first(state))).toContain(
+      "Generic entry requires a known reusable specification.",
+    );
+    expect(() =>
+      applyLibraryCommand(state, {
+        kind: "approve",
+        expectedRevision: state.revision,
+        entryIds: [first(state).id],
+      }),
+    ).toThrow("Publication");
+    expect(first(state).status).toBe("draft");
+  });
+
+  it("treats n-a as absent product identity and missing observed value", () => {
+    expect(n(" n-a ")).toEqual({ kind: "missing" });
+    let state = imported();
+    const other = snapshot();
+    const type = other.types[0];
+    if (!type) throw Error("Missing type");
+    type.typeGlobalId = "other";
+    state = applyLibraryCommand(state, {
+      kind: "import",
+      expectedRevision: state.revision,
+      snapshot: other,
+    });
+    for (const entry of state.entries) {
+      state = applyLibraryCommand(state, {
+        kind: "edit",
+        expectedRevision: state.revision,
+        entryId: entry.id,
+        definition: {
+          ...entry.definition,
+          kind: "product",
+          manufacturer: { value: "n-a", confirmed: true },
+          model: { value: "N-A", confirmed: true },
+        },
+      });
+    }
+    expect(entryIssues(state, first(state))).toContain(
+      "Product requires confirmed manufacturer and model.",
+    );
+    expect(() =>
+      applyLibraryCommand(state, {
+        kind: "approve",
+        expectedRevision: state.revision,
+        entryIds: [first(state).id],
+      }),
+    ).toThrow("Publication");
+    expect(duplicateCandidates(state, first(state).id)[0]?.confidence).not.toBe(
+      "identity",
+    );
+  });
+
+  it("preserves absorbed split partitions through merge and restore", () => {
+    let state = imported();
+    const targetId = first(state).id;
+    const other = snapshot(["600", "800"]);
+    const type = other.types[0];
+    if (!type) throw Error("Missing type");
+    type.typeGlobalId = "other";
+    state = applyLibraryCommand(state, {
+      kind: "import",
+      expectedRevision: state.revision,
+      snapshot: other,
+    });
+    const category = state.categories[0];
+    const toSplit = state.entries[1];
+    if (!category || !toSplit) throw Error("Missing split fixture");
+    state = applyLibraryCommand(state, {
+      kind: "template",
+      expectedRevision: state.revision,
+      categoryId: category.id,
+      mappings: [
+        {
+          key: "Dimensions/Width",
+          label: "Width",
+          dataKind: "number",
+          canonicalUnit: "m",
+          role: "variant",
+        },
+      ],
+    });
+    state = applyLibraryCommand(state, {
+      kind: "split",
+      expectedRevision: state.revision,
+      entryId: toSplit.id,
+      variantFieldKeys: ["Dimensions/Width"],
+    });
+    const variants = state.entries.filter(
+      (entry) => entry.id !== targetId && entry.status === "draft",
+    );
+    expect(
+      variants.map((entry) =>
+        entry.sourceReferences.flatMap((reference) => reference.occurrenceIds),
+      ),
+    ).toEqual([[1], [2]]);
+    const originalReferences = variants.map((entry) =>
+      structuredClone(entry.sourceReferences),
+    );
+    state = applyLibraryCommand(state, {
+      kind: "merge",
+      expectedRevision: state.revision,
+      targetId,
+      absorbedIds: variants.map((entry) => entry.id),
+    });
+    expect(
+      variants.map(
+        (entry) =>
+          state.entries.find((candidate) => candidate.id === entry.id)
+            ?.sourceReferences,
+      ),
+    ).toEqual(originalReferences);
+    state = applyLibraryCommand(state, {
+      kind: "restore",
+      expectedRevision: state.revision,
+      entryIds: variants.map((entry) => entry.id),
+    });
+    expect(
+      variants.map(
+        (entry) =>
+          state.entries.find((candidate) => candidate.id === entry.id)
+            ?.sourceReferences,
+      ),
+    ).toEqual(originalReferences);
+    expect(first(state).sourceReferences[1]?.occurrenceIds).toEqual([1, 2]);
+  });
+
+  it("suggests Sound Pressure Level while excluding spatial level metadata", () => {
+    const snap = snapshot();
+    const type = snap.types[0];
+    if (!type) throw Error("Missing type");
+    const field = type.fields[0];
+    if (!field) throw Error("Missing field");
+    type.fields = [
+      {
+        ...field,
+        key: "Acoustic/Sound Pressure Level",
+        pset: "Acoustic",
+        name: "Sound Pressure Level",
+      },
+      {
+        ...field,
+        key: "Placement/Building Level",
+        pset: "Placement",
+        name: "Building Level",
+      },
+      { ...field, key: "Placement/Level", pset: "Placement", name: "Level" },
+    ];
+    const state = imported(snap);
+    expect(
+      state.templates[0]?.suggestions.map((mapping) => mapping.key),
+    ).toEqual(["Acoustic/Sound Pressure Level"]);
+    expect(
+      entryFieldSuggestions(state, first(state)).map(
+        (suggestion) => suggestion.key,
+      ),
+    ).toEqual(["Acoustic/Sound Pressure Level"]);
+  });
+});

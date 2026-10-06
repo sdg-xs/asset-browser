@@ -262,7 +262,7 @@ export function applyLibraryCommand(
                 ...reference.occurrenceIds,
               ]),
             ];
-          else target.sourceReferences.push(reference);
+          else target.sourceReferences.push(structuredClone(reference));
         }
         for (const flag of entry.reviewFlags)
           if (!target.reviewFlags.includes(flag)) target.reviewFlags.push(flag);

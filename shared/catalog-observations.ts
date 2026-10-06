@@ -9,8 +9,15 @@ import type {
 import { equalNormalized } from "./catalog-normalization.js";
 
 export function reusableField(field: ObservedField): boolean {
-  return !/(?:globalid|expressid|asset.?id|room|level|offset|placement|installation|manufacturer|model(?:number)?|generic hard asset)/i.test(
-    field.name,
+  const spatialLevel =
+    /^(?:(?:building|storey|floor|reference|base|top|schedule|constraint)\s*)?level(?:\s*(?:name|id|number))?$/i.test(
+      field.name.trim(),
+    );
+  return (
+    !spatialLevel &&
+    !/(?:globalid|expressid|asset.?id|room|offset|placement|installation|manufacturer|model(?:number)?|generic hard asset)/i.test(
+      field.name,
+    )
   );
 }
 export function sourceFor(
