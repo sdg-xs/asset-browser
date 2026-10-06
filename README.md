@@ -1,39 +1,32 @@
-# HEMY local IFC asset library
+# HEMY curated asset library
 
-Browse real IFC asset types, filter by category, and inspect read-only properties and representative 3D geometry. The local service discovers existing source files, retains uploads, and persists catalog indexes and model visibility. IFC parsing and geometry extraction run in a browser worker.
+A staff-only, local-first catalog of reusable products and generic specification variants. The main Library contains approved definitions with independent UUIDs. Sources retains IFC browsing, uploads, indexing and read-only inspection. Original IFC files stay in their existing folders.
 
-For project handoff or resumed development, start with [project context](docs/project-context.md). Requirements, architecture and verification evidence are linked there.
-
-Use Node.js 24 or newer. Install dependencies, then start the app:
+Use Node.js 24 or newer:
 
 ```powershell
 npm install
 npm run dev
 ```
 
-Open `http://127.0.0.1:5173`. Vite proxies `/api` to the localhost service on port 3001. For a production build, run `npm run build` followed by `npm start`, then open `http://127.0.0.1:3001`. The service binds to `127.0.0.1`.
+Open `http://127.0.0.1:5173`. For production, run `npm run build`, then `npm start` and open `http://127.0.0.1:3001`. The service binds to `127.0.0.1`.
 
-```powershell
-npm run build
-npm start
-```
+A fresh catalog is empty. In Sources, select an existing model or upload an IFC file, then choose **Analyze and import drafts**. Review imported definitions in Needs review. In Categories, review category names/aliases and confirm reusable source-field mappings and variant roles. Edit a definition using verified source specifications or staff-confirmed product identity, then explicitly approve it. Products require confirmed manufacturer and model; generic entries require a category, readable name and known reusable specification. Imported values and name hints are unconfirmed.
 
-The library selects BS19 initially when available. Choosing a source indexes it if needed; cached catalogs appear immediately. Select a category or search by type name, category, or IFC class. Switch between grid and list views, then select a card to open its properties and 3D side inspector. The arrow at the top right of each card selects that card and opens a centered window with its 3D geometry and read-only parameters. Close it with the X button or Escape; focus returns to the arrow. The viewer opens the selected IFC source and tries other occurrences if the first has no supported geometry. Drag to orbit, scroll to zoom, and use Fit asset to restore framing. Preview placeholders indicate that geometry has not yet been loaded.
+Click a card to open the side inspector; its arrow opens the centered native preview. Curated specifications appear first, followed by representative geometry, source observations and raw read-only IFC properties. Escape closes the dialog and returns focus to its arrow. Drag to orbit, scroll to zoom, and use Fit asset to restore framing. Geometry loads on inspection rather than on every card.
 
-Add model accepts a single `.ifc` file. It saves the upload before browser processing starts, so a processing failure does not discard the file. Remove model hides it persistently and retains its original bytes. Categories use `Identity Data / Generic Hard Asset`, with instance precedence and type fallback only when the instance property is absent. Blank or `NA` values are excluded; excluded and untyped occurrence counts appear above the results.
+Same names never auto-merge. Compare duplicates before confirming a merge; the target keeps its curated values, absorbed entries are archived, and the result returns to draft. Confirm variant mappings before splitting occurrences into new drafts. Preferred geometry uses reviewed occurrence order, followed only by references explicitly confirmed equivalent. A changed source needs review and rebinding. Hiding a source retains its IFC bytes and approved definitions; unavailable geometry is shown locally. Archiving a definition is independent of source visibility.
 
-`npm test` runs storage/API, real IFC parsing, viewer lifecycle, and catalog interaction tests. `npm run typecheck` checks strict TypeScript. `npm ci` is available for reproducible installation from the lockfile.
-
-Environment settings:
+`library.json` retains source identity, indexes and visibility. `catalog-library.json` separately stores schema-version-1 definitions, templates, categories, observations and revisions. Staff overrides remain separate from source values. Writes are atomic and serialized within one process. Run one service per data folder. Catalog commands carry `expectedRevision`; HTTP 409 refreshes the UI without replaying the decision.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `IFC_SOURCE_ROOT` | `C:/Users/StevenGomba/OneDrive - HEMY AS/Desktop/Omniverse Working Files/PROPERTIES` | Discover `<CODE>/IFC/*.ifc` without modifying source files. |
-| `IFC_DATA_ROOT` | `.local-data` relative to the working directory | Persist `library.json`, managed `uploads/`, and upload `staging/`. |
-| `PORT` | `3001` | Local API and production UI port, also used by the Vite proxy. |
-| `IFC_MAX_UPLOAD_BYTES` | `1073741824`, 1 GiB | Maximum streamed upload size. |
+| `IFC_SOURCE_ROOT` | `C:/Users/StevenGomba/OneDrive - HEMY AS/Desktop/Omniverse Working Files/PROPERTIES` | Discover `<CODE>/IFC/*.ifc` without changing originals. |
+| `IFC_DATA_ROOT` | `.local-data` | Store both JSON state files, retained uploads and staging. |
+| `PORT` | `3001` | API/production port and Vite proxy target. |
+| `IFC_MAX_UPLOAD_BYTES` | `1073741824` | Maximum streamed upload size, 1 GiB. |
 
-For another machine, configure `IFC_SOURCE_ROOT` before starting. A missing source folder produces an empty existing-model inventory and a startup explanation in the terminal. Managed uploads remain available. Filesystem permission failures produce an actionable API error.
+A clone needs a configured source folder or uploads, followed by explicit analysis and approval. IFC originals and local catalog data are not repository assets. A missing source folder is reported at startup; managed uploads remain available. Keep the data folder separate from original property folders.
 
 ```powershell
 $env:IFC_SOURCE_ROOT = 'D:/Properties'
@@ -41,19 +34,18 @@ $env:IFC_DATA_ROOT = 'D:/HEMY-library-data'
 npm run dev
 ```
 
-Keep the managed folder outside the original property folders. Removing a model persistently hides it, preserves its IFC bytes, and blocks its file route. Uploaded file names are display labels; managed disk names use random IDs, so equally named uploads stay separate.
+Source routes use `shared/contracts.ts`. Catalog records and commands use `shared/catalog-library.ts`.
 
-The revision fingerprint is file size plus filesystem modification time in milliseconds. A changed fingerprint clears the derived index while keeping model identity. Worker downloads send the expected fingerprint; the service checks the opened disk file before streaming. A conflict reloads metadata and indexes the current source before inspecting its current type and occurrence IDs. This MVP does not hash every large IFC file; external changes that preserve both size and modification time are not detectable. State operations are serialized within the single service process, and state publication uses temporary-file rename. Run one service process per managed data folder.
+- `GET /api/health` returns the local service status.
+- `GET /api/models` returns visible sources and saved indexes.
+- `GET /api/models/:id/file` streams revision-bound IFC bytes. `X-IFC-Fingerprint` mismatch returns `SOURCE_CHANGED` HTTP 409.
+- `POST /api/models` accepts one multipart IFC `file`; `DELETE /api/models/:id` hides it without deleting bytes.
+- `PUT /api/models/:id/index` saves an index for the matching source/fingerprint.
+- `GET /api/catalog-library` returns the complete catalog.
+- `POST /api/catalog-library/commands` accepts `import`, `edit`, `approve`, `archive`, `restore`, `merge`, `split`, `category` and `template` commands with the current `expectedRevision` and returns the complete updated catalog. See the shared discriminated schema for exact payloads.
 
-API routes return schema-validated records from `shared/contracts.ts`:
+Errors use `{ "error": { "code": "...", "message": "..." } }`. JSON requests are limited to 32 MiB. Invalid localhost hosts and cross-site mutations are rejected; requests cannot supply filesystem paths. Source fingerprints use size and modification time, not content hashes, so edits preserving both remain undetectable.
 
-- `GET /api/health` returns `{ "status": "ok" }`.
-- `GET /api/models` returns the visible model array, with `index: null` until indexed.
-- `GET /api/models/:id/file` streams the IFC source by persisted model ID. `X-IFC-Fingerprint` binds a download to an expected revision; a mismatch returns structured `SOURCE_CHANGED` HTTP 409. Successful responses include the current fingerprint and disable caching.
-- `POST /api/models` accepts one multipart `file` and returns its saved model with status 201.
-- `DELETE /api/models/:id` hides the model and returns status 204.
-- `PUT /api/models/:id/index` saves a matching-model, matching-fingerprint catalog index and returns the updated model.
+The worker respects per-property instance presence, including explicit blank values, before type fallback. Missing values stay unknown. Recognized length, area, volume, power, flow and voltage units normalize to canonical units; unsupported units remain explicit text/unknown. Category/template suggestions exclude technical identity and installation fields; raw observations remain available as provenance. Unit labels do not convert existing values.
 
-Errors return `{ "error": { "code": "...", "message": "..." } }`. JSON bodies over 32 MiB return HTTP 413 with code `REQUEST_TOO_LARGE`. Requests cannot supply filesystem paths. Mutations require a matching localhost origin when the Origin header is present. Invalid Host headers and cross-site mutations are rejected. Upload validation checks a bounded STEP/IFC header and completion marker before publishing the file; actual IFC parsing remains the browser's responsibility.
-
-BS19, approximately 117 MiB, was verified in Chrome with 1,019 types and 107 categories. Prior measured indexing runs took 13–21 seconds on this machine. The viewer loads separately from the approximately 309 kB application script; its roughly 5.97 MB SDK chunk still triggers Vite's size warning. These measurements do not establish support for the 520 MiB HG62 source or every IFC exporter. See [verification evidence and limits](docs/verification.md). FM import, placement, editing, RFA and Nucleus are outside this MVP.
+Run `npm test -- --maxWorkers=2`, `npm run typecheck` and `npm run build`. Real BS19/JV3 verification produced 1,570 drafts and 152 category labels. Their serialized analysis snapshots were about 20.0 MB and 9.3 MB, and the pretty-printed combined catalog was about 72 MB. Commands and reads return full state; unfiltered review rendering is expensive at this size. These samples do not establish a general memory limit, support for HG62 or every IFC exporter. FM, placement, original IFC editing, RFA, Nucleus and remote catalog integration remain deferred. See [project context](docs/project-context.md), [requirements](docs/requirements-review.md), [architecture](docs/architecture-review.md) and [verification](docs/verification.md).

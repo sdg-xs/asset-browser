@@ -69,6 +69,29 @@ const edit = (state: CatalogLibrary, def = definition(first(state))) =>
     definition: def,
   });
 describe("catalog domain", () => {
+  it("keeps BS19 installation fields as provenance without reusable suggestions", () => {
+    const snap = snapshot();
+    const type = snap.types[0];
+    const field = type?.fields[0];
+    if (!type || !field) throw Error("Missing fixture field");
+    const names = [
+      "Functional Location", "IfcGUID", "Type IfcGUID", "GlobalId", "Workset",
+      "Project ID", "System Instance Number", "Component Instance Number",
+      "Asset Name", "Asset Status", "Default Elevation", "Elevation from Level",
+      "Host", "Moves With Nearby Elements", "Phase Created", "Type Id",
+      "Export to IFC", "Export Type to IFC",
+    ];
+    type.fields.push(...names.map((name) => ({
+      ...field, key: `Identity Data/${name}`, pset: "Identity Data", name,
+    })));
+    const state = imported(snap);
+    expect(state.sources[0]?.observation.fields.map((item) => item.name))
+      .toEqual(["Width", ...names]);
+    expect(state.templates[0]?.suggestions.map((item) => item.label))
+      .toEqual(["Width"]);
+    expect(entryFieldSuggestions(state, first(state)).map((item) => item.key))
+      .toEqual(["Dimensions/Width"]);
+  });
   it("retains product codes as source evidence without suggesting identity as specifications", () => {
     const snap = snapshot();
     const type = snap.types[0];

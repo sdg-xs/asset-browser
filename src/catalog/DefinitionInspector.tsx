@@ -47,9 +47,15 @@ export function DefinitionInspector({
   useEffect(() => {
     if (modal) return;
     const previous = document.activeElement;
+    const inspector = close.current?.closest("aside");
     close.current?.focus();
     return () => {
-      if (previous instanceof HTMLElement && previous.isConnected)
+      if (
+        previous instanceof HTMLElement &&
+        previous.isConnected &&
+        (document.activeElement === document.body ||
+          inspector?.contains(document.activeElement))
+      )
         previous.focus();
     };
   }, [entry.id, modal]);

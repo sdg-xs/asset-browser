@@ -182,6 +182,21 @@ describe("curated catalog", () => {
     expect(await screen.findByRole("alert")).toBeTruthy();
     expect(f.getState().entries[0]?.status).toBe("draft");
   });
+  it("returns centered preview focus to its arrow after replacing a side inspector", async () => {
+    const f = fixture(true);
+    render(<CatalogWorkspace catalogApi={f.api} sourceApi={f.sources} />);
+    const card = await screen.findByRole("button", { name: "Inspect Cabinet" });
+    card.focus();
+    fireEvent.click(card);
+    const arrow = screen.getByRole("button", { name: "Preview Cabinet" });
+    arrow.focus();
+    fireEvent.click(arrow);
+    fireEvent(
+      screen.getByRole("dialog", { name: "Definition preview" }),
+      new Event("cancel", { cancelable: true }),
+    );
+    expect(document.activeElement).toBe(arrow);
+  });
   it("retains hidden-source definitions and selects the card when opening its centered preview", async () => {
     const f = fixture(true);
     render(<CatalogWorkspace catalogApi={f.api} sourceApi={f.sources} />);

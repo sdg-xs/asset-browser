@@ -5,6 +5,7 @@ import type {
   FieldMapping,
 } from "../../shared/catalog-library.js";
 import type { CatalogAction } from "./api.js";
+import { reusableField } from "../../shared/catalog-observations.js";
 export function CategoryEditor({
   state,
   pending,
@@ -70,7 +71,8 @@ function CategoryForm({
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const suggestions = (template?.suggestions ?? []).filter(
-    (s) => !mappings.some((m) => m.key === s.key),
+    (s) =>
+      reusableField({ name: s.label }) && !mappings.some((m) => m.key === s.key),
   );
   const savedCategory = state.categories.find((c) => c.id === id);
   const observed = state.sources

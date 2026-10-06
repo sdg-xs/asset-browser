@@ -1459,7 +1459,13 @@ input[type="checkbox"] {
   display: none;
 }
 .definition-content .preview {
-  height: 240px;
+  height: auto;
+}
+.definition-inspector:not(.in-dialog) .inspector-window {
+  display: block;
+}
+.definition-inspector:not(.in-dialog) .inspector-window > .property-section {
+  border-left: 0;
 }
 .definition-preview-dialog {
   width: min(950px, calc(100vw - 32px));

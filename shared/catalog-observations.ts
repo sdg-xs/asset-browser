@@ -7,14 +7,27 @@ import type {
   SourceRecord,
 } from "./catalog-library.js";
 import { equalNormalized } from "./catalog-normalization.js";
+const installationFieldNames = new Set(
+  [
+    "IfcGUID", "Type IfcGUID", "Revit (GUID)", "GUID", "Functional Location",
+    "Workset", "Project ID", "System Instance Number", "Component Instance Number",
+    "Asset Name", "Asset Status", "Default Elevation", "Elevation", "Elevation from Level",
+    "Host", "Moves With Nearby Elements", "Phase Created", "Phase Demolished", "Type Id",
+    "Export to IFC", "Export Type to IFC",
+  ].map((name) => name.toLowerCase().replace(/\s/g, "")),
+);
 
-export function reusableField(field: ObservedField): boolean {
+export function reusableField(field: Pick<ObservedField, "name">): boolean {
+  const installationMetadata = installationFieldNames.has(
+    field.name.toLowerCase().replace(/\s/g, ""),
+  );
   const spatialLevel =
     /^(?:(?:building|storey|floor|reference|base|top|schedule|constraint)\s*)?level(?:\s*(?:name|id|number))?$/i.test(
       field.name.trim(),
     );
   return (
     !spatialLevel &&
+    !installationMetadata &&
     !/^(?:product\s*(?:code|id|number)|sku|(?:manufacturer\s*)?(?:art\.?\s*no\.?|article\s*(?:number|no\.?)|part\s*(?:number|no\.?)))$/i.test(
       field.name.trim(),
     ) &&
