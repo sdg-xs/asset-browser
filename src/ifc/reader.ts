@@ -416,9 +416,12 @@ export class IfcReader {
           fields.set(field.key, [field]);
           continue;
         }
-        if (existing.some(value => value.rawValue === field.rawValue &&
-            value.measure === field.measure && value.unit === field.unit &&
-            equalNormalized(value.normalized, field.normalized))) continue;
+        const equivalent = existing.findIndex(value => value.rawValue === field.rawValue &&
+          equalNormalized(value.normalized, field.normalized));
+        if (equivalent >= 0) {
+          existing[equivalent] = field;
+          continue;
+        }
         existing.push(field);
         fields.set(field.key, existing);
       }

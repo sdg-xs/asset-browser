@@ -15,6 +15,49 @@ let fixture: Awaited<ReturnType<typeof libraryFixture>> | undefined;
 afterEach(async () => fixture?.cleanup());
 describe("creation final integration regressions", () => {
   it.each([
+    { location: "type", before: "'Identity Data',$,(#40)", after: "'Identity Data',$,(#40,#56)", text: "Air quality sensor", occurrence: 31 },
+    { location: "instance", before: "'Identity Data',$,(#44)", after: "'Identity Data',$,(#44,#56)", text: "Temperature sensor", occurrence: 30 },
+  ])("folds equivalent $location classification text across IFC string measures without inventing issues", async variant => {
+    fixture = await libraryFixture();
+    const original = await readFile(new URL("./fixtures/assets.ifc", import.meta.url), "utf8");
+    const text = original.replace(variant.before, variant.after).replace(/ENDSEC;\s*END-ISO/, `#56=IFCPROPERTYSINGLEVALUE('Generic Hard Asset',$,IFCTEXT('${variant.text}'),$);\nENDSEC;\nEND-ISO`);
+    await writeFile(fixture.sourcePath, text);
+    const app = await createApp(fixture);
+    const model = LibraryModelsSchema.parse((await request(app).get("/api/models")).body)[0];
+    if (!model) throw Error("Missing model");
+    const reader = new IfcReader();
+    try {
+      await reader.initialize();
+      reader.open(new TextEncoder().encode(text), model, undefined, "creation");
+      const index = reader.discoverAssets();
+      expect(index.candidates.every(candidate => candidate.classificationIssues.length === 0)).toBe(true);
+      const snapshot = reader.analyzeAssets();
+      const candidate = index.candidates.find(candidate => candidate.identity.kind === "type");
+      if (!candidate) throw Error("Missing typed candidate");
+      await request(app).put(`/api/models/${model.id}/creation-index`).send(index).expect(200);
+      const imported = catalogLibrarySchema.parse((await request(app).post("/api/catalog-library/commands").send({ kind: "import-selected", expectedRevision: 0, snapshot, candidateKeys: [candidate.key] }).expect(200)).body);
+      expect(imported.sources).toHaveLength(index.candidates.length);
+      expect(imported.entries).toHaveLength(1);
+      expect(imported.entries[0]?.status).toBe("draft");
+      const observation = snapshot.types.find(type => sourceObservationKey(type) === candidate.key);
+      const field = observation?.fields.find(field => field.name === "Generic Hard Asset" && field.pset === "Identity Data");
+      expect(field?.values.filter(value => value.occurrenceIds.includes(variant.occurrence))).toEqual([
+        expect.objectContaining({ rawValue: variant.text, sourceMeasure: "IFCTEXT", normalized: { kind: "text", value: variant.text, unit: null } }),
+      ]);
+      expect(observation?.classificationIssues).toBeUndefined();
+      const raw = reader.properties(variant.occurrence).find(group => group.name === "Identity Data" && group.source === variant.location);
+      expect(raw?.values.filter(value => value.name === "Generic Hard Asset").map(value => value.value)).toEqual([variant.text, variant.text]);
+      expect((await request(app).get(`/api/models/${model.id}/file`).expect(200)).text).toBe(text);
+      expect(text).toContain(`IFCLABEL('${variant.text}')`);
+      expect(text).toContain(`IFCTEXT('${variant.text}')`);
+      reader.open(new TextEncoder().encode(text), model);
+      const strict = reader.librarySnapshot();
+      const strictField = strict.types[0]?.fields.find(field => field.name === "Generic Hard Asset" && field.pset === "Identity Data");
+      expect(strictField?.values.filter(value => value.occurrenceIds.includes(variant.occurrence))).toEqual(field?.values.filter(value => value.occurrenceIds.includes(variant.occurrence)));
+      expect(applyLibraryCommand(emptyCatalogLibrary(), { kind: "import", expectedRevision: 0, snapshot: strict }).entries).toHaveLength(1);
+    } finally { reader.dispose(); }
+  });
+  it.each([
     { location: "type", before: "'Identity Data',$,(#40)", after: "'Identity Data',$,(#40,#44)", occurrence: 31, values: ["Air quality sensor", "Temperature sensor"] },
     { location: "instance", before: "'Identity Data',$,(#44)", after: "'Identity Data',$,(#44,#50)", occurrence: 30, values: ["Temperature sensor", "NA"] },
     { location: "blank instance", before: "'Identity Data',$,(#44)", after: "'Identity Data',$,(#44,#47)", occurrence: 30, values: ["Temperature sensor", ""] },
