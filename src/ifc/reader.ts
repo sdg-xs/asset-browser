@@ -341,7 +341,10 @@ export class IfcReader {
               measure,
               unit,
               rawValue,
-              normalized,
+              normalized:
+                normalized.kind === "text" && /MEASURE/.test(measure)
+                  ? { ...normalized, unresolvedMeasure: true }
+                  : normalized,
             });
           }
         this.propertySets.set(setId, cached);

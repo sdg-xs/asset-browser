@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type {
   CatalogLibrary,
   LibraryEntry,
@@ -9,7 +9,12 @@ import {
 } from "../../shared/catalog-rules.js";
 import { Dialog } from "../components/Dialog.js";
 import type { CatalogAction } from "./api.js";
-import { entrySpecifications, fieldLabel, valueText } from "./display.js";
+import {
+  entrySpecifications,
+  fieldLabel,
+  entryFieldLabel,
+  valueText,
+} from "./display.js";
 export function ReviewDialog({
   mode,
   state,
@@ -38,6 +43,11 @@ export function ReviewDialog({
     entry.sourceReferences.filter((r) => r.equivalent).map((r) => r.sourceId),
   );
   const [reviewedSources, setReviewedSources] = useState<string[]>([]);
+  const [subsets, setSubsets] = useState<Record<string, number[]>>(() =>
+    Object.fromEntries(
+      entry.sourceReferences.map((r) => [r.sourceId, [...r.occurrenceIds]]),
+    ),
+  );
   const rebind = reviewedSources.includes(preferred);
   const setRebind = (reviewed: boolean) =>
     setReviewedSources((ids) =>
@@ -53,14 +63,15 @@ export function ReviewDialog({
     void onSave(action).then((ok) => {
       if (ok) onClose();
     });
-  const candidates = duplicateCandidates(state, entry.id);
+  const candidates = useMemo(
+    () => (mode === "merge" ? duplicateCandidates(state, entry.id) : []),
+    [mode, state, entry.id],
+  );
   const preferredRef = entry.sourceReferences.find(
     (r) => r.sourceId === preferred,
   );
   const preferredSource = state.sources.find((s) => s.id === preferred);
-  const occurrences = rebind
-    ? (preferredSource?.observation.occurrenceIds ?? [])
-    : (preferredRef?.occurrenceIds ?? []);
+  const occurrences = subsets[preferred] ?? preferredRef?.occurrenceIds ?? [];
   return (
     <Dialog
       title={
@@ -141,7 +152,7 @@ export function ReviewDialog({
                         {Object.entries(entrySpecifications(state, e)).map(
                           ([key, value]) => (
                             <p key={key}>
-                              {fieldLabel(state, key, e.definition.categoryId)}:{" "}
+                              {entryFieldLabel(state, e, key)}:{" "}
                               {valueText(value)}
                             </p>
                           ),
@@ -230,9 +241,7 @@ export function ReviewDialog({
                 );
                 setOccurrence(
                   String(
-                    (reviewedSources.includes(e.target.value)
-                      ? currentSource?.observation.occurrenceIds
-                      : ref?.occurrenceIds)?.[0] ?? "",
+                    (subsets[e.target.value] ?? ref?.occurrenceIds)?.[0] ?? "",
                   ),
                 );
               }}
@@ -272,17 +281,42 @@ export function ReviewDialog({
               checked={rebind}
               onChange={(e) => {
                 setRebind(e.target.checked);
-                setOccurrence(
-                  String(
-                    (e.target.checked
-                      ? preferredSource?.observation.occurrenceIds
-                      : preferredRef?.occurrenceIds)?.[0] ?? "",
-                  ),
-                );
+                const ids =
+                  preferredRef?.fingerprint === preferredSource?.fingerprint
+                    ? (preferredRef?.occurrenceIds ?? [])
+                    : [];
+                setSubsets((all) => ({ ...all, [preferred]: ids }));
+                setOccurrence(String(ids[0] ?? ""));
               }}
             />
             I reviewed the current source revision and its occurrence membership
           </label>
+          {rebind && (
+            <fieldset>
+              <legend>Occurrences belonging to this definition</legend>
+              <p>
+                Select only matching variants. A changed source requires a new
+                subset selection.
+              </p>
+              {preferredSource?.observation.occurrenceIds.map((id) => (
+                <label className="check" key={id}>
+                  <input
+                    type="checkbox"
+                    checked={occurrences.includes(id)}
+                    onChange={(e) => {
+                      const ids = e.target.checked
+                        ? [...occurrences, id]
+                        : occurrences.filter((value) => value !== id);
+                      setSubsets((all) => ({ ...all, [preferred]: ids }));
+                      if (!ids.includes(Number(occurrence)))
+                        setOccurrence(String(ids[0] ?? ""));
+                    }}
+                  />
+                  Include occurrence #{id}
+                </label>
+              ))}
+            </fieldset>
+          )}
           <label>
             Preferred occurrence
             <select
@@ -322,10 +356,7 @@ export function ReviewDialog({
               const references = entry.sourceReferences
                 .map((r) => {
                   const source = state.sources.find((s) => s.id === r.sourceId);
-                  const ids =
-                    reviewedSources.includes(r.sourceId) && source
-                      ? source.observation.occurrenceIds
-                      : r.occurrenceIds;
+                  const ids = subsets[r.sourceId] ?? r.occurrenceIds;
                   return {
                     ...r,
                     fingerprint:

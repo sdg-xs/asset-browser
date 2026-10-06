@@ -12,6 +12,7 @@ export const normalizedValueSchema = z.discriminatedUnion("kind", [
     kind: z.literal("text"),
     value: z.string(),
     unit: z.string().nullable(),
+    unresolvedMeasure: z.literal(true).optional(),
   }),
 ]);
 export type NormalizedValue = z.infer<typeof normalizedValueSchema>;
@@ -24,6 +25,8 @@ export const observedFieldSchema = z.object({
   values: z.array(
     z.object({
       rawValue: z.string(),
+      sourceUnit: z.string().nullable().optional(),
+      sourceMeasure: z.string().optional(),
       normalized: normalizedValueSchema,
       occurrenceIds,
     }),
@@ -40,6 +43,7 @@ export const sourceTypeObservationSchema = z.object({
 });
 export type SourceTypeObservation = z.infer<typeof sourceTypeObservationSchema>;
 export const librarySnapshotSchema = z.object({
+  analysisVersion: z.literal(2).optional(),
   modelId: id,
   fingerprint: id,
   sourceName: z.string(),
@@ -48,6 +52,7 @@ export const librarySnapshotSchema = z.object({
 export type LibrarySnapshot = z.infer<typeof librarySnapshotSchema>;
 export const fieldMappingSchema = z.object({
   key: id,
+  sourceKeys: z.array(id).min(1).optional(),
   label: z.string(),
   dataKind: z.enum(["number", "text"]),
   canonicalUnit: z.string().nullable(),
@@ -91,6 +96,7 @@ export const sourceReferenceSchema = z.object({
 });
 export type SourceReference = z.infer<typeof sourceReferenceSchema>;
 export const sourceRecordSchema = z.object({
+  analysisVersion: z.literal(2).optional(),
   id,
   modelId: id,
   fingerprint: id,
@@ -106,6 +112,12 @@ export const libraryEntrySchema = z.object({
   status: z.enum(["draft", "approved", "archived"]),
   sourceReferences: z.array(sourceReferenceSchema),
   reviewFlags: z.array(z.enum(["source-changed"])),
+  publication: z
+    .object({
+      specifications: z.record(z.string(), normalizedValueSchema),
+      labels: z.record(z.string(), z.string()),
+    })
+    .optional(),
 });
 export type LibraryEntry = z.infer<typeof libraryEntrySchema>;
 export const catalogLibrarySchema = z.object({

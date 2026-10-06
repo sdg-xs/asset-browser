@@ -100,7 +100,9 @@ export class AnalysisUnits {
     const entity = unitSchema.parse(this.read(id));
     const unknownUnit: ResolvedUnit = {
       label:
-        entity.Name?.value ??
+        (entity.Name?.value
+          ? [entity.Prefix?.value, entity.Name.value].filter(Boolean).join(" ")
+          : null) ??
         entity.UnitType?.value ??
         `Unsupported unit #${id}`,
       canonical: null,

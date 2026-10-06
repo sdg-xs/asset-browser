@@ -7,6 +7,7 @@ import { equalNormalized, identityValue } from "./catalog-normalization.js";
 import {
   comparableSpecifications,
   entryFieldSuggestions,
+  hasUnnormalizedMeasure,
 } from "./catalog-observations.js";
 import { CatalogDomainError } from "./catalog-errors.js";
 export function entryIssues(
@@ -91,6 +92,11 @@ export function duplicateCandidates(
           !right ||
           left.kind === "missing" ||
           right.kind === "missing" ||
+          (left.kind === "text" && left.unresolvedMeasure) ||
+          (right.kind === "text" && right.unresolvedMeasure) ||
+          (left.kind === "text" && hasUnnormalizedMeasure(state, entry, key)) ||
+          (right.kind === "text" &&
+            hasUnnormalizedMeasure(state, other, key)) ||
           (left.kind === "text" && left.unit !== null) ||
           (right.kind === "text" && right.unit !== null)
         )

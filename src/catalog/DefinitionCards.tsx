@@ -5,7 +5,12 @@ import type {
   LibraryEntry,
 } from "../../shared/catalog-library.js";
 import type { SourceAvailability } from "./useSourceAvailability.js";
-import { entrySpecifications, fieldLabel, valueText } from "./display.js";
+import {
+  entrySpecifications,
+  fieldLabel,
+  entryFieldLabel,
+  valueText,
+} from "./display.js";
 import { geometrySource } from "./useDefinitionPreview.js";
 export function DefinitionCards({
   state,
@@ -76,7 +81,7 @@ export function DefinitionCards({
                   .slice(0, 3)
                   .map(([key, value]) => (
                     <span key={key}>
-                      {fieldLabel(state, key, entry.definition.categoryId)}{" "}
+                      {entryFieldLabel(state, entry, key)}{" "}
                       <strong>{valueText(value)}</strong>
                     </span>
                   ))}

@@ -48,6 +48,7 @@ export function CatalogWorkspace({
     [editor, setEditor] = useState<
       "edit" | "merge" | "split" | "geometry" | null
     >(null);
+  const [page, setPage] = useState(0);
   const { availability, retry: retryAvailability } = useSourceAvailability(
     sourceApi,
     workspace,
@@ -63,39 +64,52 @@ export function CatalogWorkspace({
     (snapshot) => catalog.execute({ kind: "import", snapshot }),
   );
   const query = search.toLocaleLowerCase().trim();
-  const entries =
-    state?.entries.filter(
-      (e) =>
-        e.status ===
+  const entries = useMemo(
+    () =>
+      state?.entries.filter(
+        (e) =>
           (workspace === "Needs review"
             ? archived
-              ? "archived"
-              : "draft"
-            : "approved") &&
-        (!category || e.definition.categoryId === category) &&
-        (!kind || e.definition.kind === kind) &&
-        (!source ||
-          e.sourceReferences.some((r) =>
-            state.sources.some(
-              (s) => s.id === r.sourceId && s.modelId === source,
-            ),
-          )) &&
-        (!query ||
-          [
-            e.definition.name,
-            e.definition.description,
-            e.definition.manufacturer.value,
-            e.definition.model.value,
-            ...e.definition.tags,
-            state.categories.find((c) => c.id === e.definition.categoryId)
-              ?.name ?? "",
-            ...Object.values(entrySpecifications(state, e)).map(valueText),
-          ]
-            .join(" ")
-            .toLocaleLowerCase()
-            .includes(query)),
-    ) ?? [];
-  const visibleIds = entries.map((e) => e.id).join("|");
+              ? e.status === "archived"
+              : e.status === "draft" ||
+                (e.status === "approved" && e.reviewFlags.length > 0)
+            : e.status === "approved") &&
+          (!category || e.definition.categoryId === category) &&
+          (!kind || e.definition.kind === kind) &&
+          (!source ||
+            e.sourceReferences.some((r) =>
+              state.sources.some(
+                (s) => s.id === r.sourceId && s.modelId === source,
+              ),
+            )) &&
+          (!query ||
+            [
+              e.definition.name,
+              e.definition.description,
+              e.definition.manufacturer.value,
+              e.definition.model.value,
+              ...e.definition.tags,
+              state.categories.find((c) => c.id === e.definition.categoryId)
+                ?.name ?? "",
+              ...Object.values(entrySpecifications(state, e)).map(valueText),
+            ]
+              .join(" ")
+              .toLocaleLowerCase()
+              .includes(query)),
+      ) ?? [],
+    [state, workspace, archived, category, kind, source, query],
+  );
+  useEffect(
+    () => setPage(0),
+    [workspace, archived, category, kind, source, query],
+  );
+  const pageCount = Math.max(1, Math.ceil(entries.length / 50));
+  const currentPage = Math.min(page, pageCount - 1);
+  const visibleEntries = entries.slice(
+    currentPage * 50,
+    (currentPage + 1) * 50,
+  );
+  const visibleIds = visibleEntries.map((e) => e.id).join("|");
   useEffect(() => {
     setChecked([]);
   }, [visibleIds, state?.revision, workspace]);
@@ -298,14 +312,16 @@ export function CatalogWorkspace({
                 <label className="check">
                   <input
                     type="checkbox"
-                    checked={checked.length === entries.length}
+                    checked={checked.length === visibleEntries.length}
                     onChange={(e) =>
                       setChecked(
-                        e.target.checked ? entries.map((item) => item.id) : [],
+                        e.target.checked
+                          ? visibleEntries.map((item) => item.id)
+                          : [],
                       )
                     }
                   />
-                  Select all {entries.length} visible definitions
+                  Select all {visibleEntries.length} visible definitions
                 </label>
                 <button
                   disabled={!checked.length || catalog.pending}
@@ -322,9 +338,31 @@ export function CatalogWorkspace({
               </div>
             )}
             {state && entries.length > 0 && (
+              <nav className="catalog-pagination" aria-label="Definition pages">
+                <span role="status">
+                  {currentPage * 50 + 1}–
+                  {Math.min((currentPage + 1) * 50, entries.length)} of{" "}
+                  {entries.length} definitions · Page {currentPage + 1} of{" "}
+                  {pageCount}
+                </span>
+                <button
+                  disabled={currentPage === 0}
+                  onClick={() => setPage(currentPage - 1)}
+                >
+                  Previous page
+                </button>
+                <button
+                  disabled={currentPage + 1 >= pageCount}
+                  onClick={() => setPage(currentPage + 1)}
+                >
+                  Next page
+                </button>
+              </nav>
+            )}
+            {state && entries.length > 0 && (
               <DefinitionCards
                 state={state}
-                entries={entries}
+                entries={visibleEntries}
                 availability={availability}
                 selected={selected}
                 checked={checked}

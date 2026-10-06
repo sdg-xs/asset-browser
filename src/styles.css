@@ -1759,3 +1759,25 @@ input[type="checkbox"] {
   padding: 0;
   min-width: 0;
 }
+
+.catalog-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 16px 0;
+  font-size: 13px;
+}
+.catalog-pagination span {
+  margin-right: auto;
+  color: var(--muted);
+}
+.category-fields {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.mapping select[multiple] {
+  min-height: 112px;
+}

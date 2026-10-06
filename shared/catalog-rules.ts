@@ -9,7 +9,9 @@ import { CatalogDomainError } from "./catalog-errors.js";
 import { entryIssues } from "./catalog-review.js";
 export { CatalogDomainError } from "./catalog-errors.js";
 export { entryIssues, duplicateCandidates } from "./catalog-review.js";
-import { sourceFor } from "./catalog-observations.js";
+import { sourceFor, parameterSourceKeys } from "./catalog-observations.js";
+import { acceptPublication } from "./catalog-publication.js";
+import { changedReferences } from "./catalog-references.js";
 import { importSnapshot } from "./catalog-import.js";
 import { splitEntry } from "./catalog-split.js";
 export { entryFieldSuggestions } from "./catalog-observations.js";
@@ -55,6 +57,11 @@ function validateReferences(
         );
       used.add(key);
     }
+    if (!reference.occurrenceIds.length)
+      throw new CatalogDomainError(
+        "INVALID_COMMAND",
+        "Choose at least one occurrence for a reviewed source.",
+      );
   }
 }
 function validateSnapshot(
@@ -201,9 +208,16 @@ export function applyLibraryCommand(
         throw new CatalogDomainError("NOT_FOUND", "Category not found.");
       entry.definition = command.definition;
       if (command.confirmedSourceReferences) {
-        validateReferences(next, command.confirmedSourceReferences);
+        validateReferences(
+          next,
+          changedReferences(entry, command.confirmedSourceReferences),
+        );
         entry.sourceReferences = command.confirmedSourceReferences;
-        entry.reviewFlags = [];
+        entry.reviewFlags = entry.sourceReferences.some(
+          (r) => sourceFor(next, r.sourceId)?.fingerprint !== r.fingerprint,
+        )
+          ? ["source-changed"]
+          : [];
       }
       if (entry.status === "approved") entry.status = "draft";
       break;
@@ -222,6 +236,7 @@ export function applyLibraryCommand(
           issues,
         );
       entries.forEach((entry) => {
+        acceptPublication(next, entry);
         entry.status = "approved";
       });
       break;
@@ -298,10 +313,75 @@ export function applyLibraryCommand(
           "INVALID_COMMAND",
           "Template mapping keys must be unique.",
         );
+      const rawKeys = command.mappings.flatMap(parameterSourceKeys);
+      if (new Set(rawKeys).size !== rawKeys.length)
+        throw new CatalogDomainError(
+          "INVALID_COMMAND",
+          "Each source property must map to one category parameter.",
+        );
+      for (const mapping of command.mappings) {
+        if (!mapping.label.trim())
+          throw new CatalogDomainError(
+            "INVALID_COMMAND",
+            "Parameter labels cannot be blank.",
+          );
+        const keys = parameterSourceKeys(mapping);
+        const sourceIds = new Set(
+          next.entries
+            .filter((e) => e.definition.categoryId === command.categoryId)
+            .flatMap((e) => e.sourceReferences.map((r) => r.sourceId)),
+        );
+        const observations = next.sources
+          .filter((s) => sourceIds.has(s.id))
+          .flatMap((s) => s.observation.fields)
+          .filter((f) => keys.includes(f.key));
+        const numbers = observations
+          .flatMap((f) => f.values)
+          .flatMap((v) =>
+            v.normalized.kind === "number" ? [v.normalized] : [],
+          );
+        if (
+          numbers.some(
+            (v) =>
+              mapping.dataKind !== "number" || v.unit !== mapping.canonicalUnit,
+          )
+        )
+          throw new CatalogDomainError(
+            "INVALID_COMMAND",
+            "Mapped numeric properties must use their actual normalized kind and unit.",
+          );
+        for (const entry of next.entries.filter(
+          (e) => e.definition.categoryId === command.categoryId,
+        )) {
+          for (const key of keys.filter((key) => key !== mapping.key)) {
+            const value = entry.definition.specifications[key];
+            if (value === undefined) continue;
+            const existing = entry.definition.specifications[mapping.key];
+            if (existing && JSON.stringify(existing) !== JSON.stringify(value))
+              throw new CatalogDomainError(
+                "INVALID_COMMAND",
+                "Resolve differing curated overrides before combining their parameters.",
+              );
+            entry.definition.specifications[mapping.key] = value;
+            delete entry.definition.specifications[key];
+          }
+        }
+      }
+      template.suggestions.push(
+        ...template.mappings.filter(
+          (old) =>
+            !command.mappings.some((m) => m.key === old.key) &&
+            !template.suggestions.some((s) => s.key === old.key),
+        ),
+      );
       template.mappings = command.mappings;
       template.suggestions = template.suggestions.filter(
         (suggestion) =>
-          !command.mappings.some((mapping) => mapping.key === suggestion.key),
+          !command.mappings.some((mapping) =>
+            parameterSourceKeys(suggestion).some((key) =>
+              parameterSourceKeys(mapping).includes(key),
+            ),
+          ),
       );
       break;
     }

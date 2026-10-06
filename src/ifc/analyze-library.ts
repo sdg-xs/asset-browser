@@ -51,12 +51,16 @@ export function analyzeLibrary({
         const value = field.values.find(
           (value) =>
             value.rawValue === observation.rawValue &&
+            value.sourceUnit === observation.unit &&
+            value.sourceMeasure === observation.measure &&
             equalNormalized(value.normalized, observation.normalized),
         );
         if (value) value.occurrenceIds.push(occurrenceId);
         else
           field.values.push({
             rawValue: observation.rawValue,
+            sourceUnit: observation.unit,
+            sourceMeasure: observation.measure,
             normalized: observation.normalized,
             occurrenceIds: [occurrenceId],
           });
@@ -73,6 +77,7 @@ export function analyzeLibrary({
   });
   progress(`Analyzed ${count.toLocaleString()} classified occurrences`);
   return librarySnapshotSchema.parse({
+    analysisVersion: 2,
     modelId: index.modelId,
     fingerprint: index.fingerprint,
     sourceName,

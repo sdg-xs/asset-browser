@@ -4,7 +4,7 @@ The approved scope changed on 2026-10-06 from source-type browsing to a persiste
 
 ## Delivered behavior
 
-Library contains approved product or generic specification definitions, each with an independent UUID. Needs review contains imported drafts and explicit publication work. Categories manages canonical labels, aliases and confirmed specification/variant mappings. Sources retains the original source browser, indexing, uploads, hide controls, geometry and raw IFC properties, and adds explicit reusable analysis/import.
+Library contains approved product or generic specification definitions, each with an independent UUID. Needs review contains imported drafts and approved entries whose sources changed. Published values remain frozen until explicit acceptance. Categories manages canonical labels, aliases and confirmed specification/variant mappings. Sources retains the original source browser, indexing, uploads, hide controls, geometry and raw IFC properties, and adds explicit reusable analysis/import.
 
 Staff confirms category, specifications, product identity, merge decisions and approval. Source observations and curated overrides are separate. Same-name cabinets with different dimensions remain separate. Split and merge results return to draft. A hidden source retains original bytes and approved definitions; geometry becomes unavailable unless another reviewed equivalent source can supply it. IFC editing, FM, placement, RFA, Nucleus and commercial Platform integration remain deferred.
 
@@ -24,6 +24,6 @@ Task 5 used an isolated production service on port 3002 with a copied source ind
 
 ## Limits and navigation
 
-Snapshots were about 20.0 MB for BS19 and 9.3 MB for JV3; combined pretty JSON was about 72 MB. Full-state APIs and unvirtualized unfiltered review rendering cost time and memory. No HG62, exporter-wide, guaranteed memory-peak or long-session leak claim is made. Source fingerprints use size/mtime. Unsupported units never acquire guessed normalization.
+Snapshots were about 20.0 MB for BS19 and 9.3 MB for JV3; combined pretty JSON was about 72 MB. Full-state APIs cost time and memory. Review rendering is paged at 50 definitions; selection applies to the visible page, and derived observations are cached. No HG62, exporter-wide, guaranteed memory-peak or long-session leak claim is made. Source fingerprints use size/mtime. Unsupported units never acquire guessed normalization.
 
 The ignored `graphify-out/` graph in the normal checkout is navigation assistance. The controller refreshes it after integrating source/docs changes, using the corrected local dispatch. No duplicate worktree graph was generated. Verify graph findings against cited files; planned requirements are not implementation evidence.

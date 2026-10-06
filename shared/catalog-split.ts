@@ -5,7 +5,11 @@ import type {
   SourceReference,
 } from "./catalog-library.js";
 import { equalNormalized } from "./catalog-normalization.js";
-import { sourceFor } from "./catalog-observations.js";
+import {
+  sourceFor,
+  parameterKeys,
+  occurrenceParameterValues,
+} from "./catalog-observations.js";
 import { CatalogDomainError } from "./catalog-errors.js";
 
 type Partition = { values: NormalizedValue[]; references: SourceReference[] };
@@ -45,13 +49,19 @@ export function splitEntry(
         "Review current source references before splitting.",
       );
     for (const occurrenceId of reference.occurrenceIds) {
-      const values = keys.map(
-        (key) =>
-          source.observation.fields
-            .find((field) => field.key === key)
-            ?.values.find((value) => value.occurrenceIds.includes(occurrenceId))
-            ?.normalized ?? ({ kind: "missing" } satisfies NormalizedValue),
-      );
+      const values = keys.map((key) => {
+        const observed = occurrenceParameterValues(
+          source,
+          parameterKeys(state, entry, key),
+          occurrenceId,
+        );
+        if (observed.length > 1)
+          throw new CatalogDomainError(
+            "INVALID_COMMAND",
+            "Resolve conflicting mapped properties on each occurrence before splitting.",
+          );
+        return observed[0] ?? ({ kind: "missing" } satisfies NormalizedValue);
+      });
       let partition = partitions.find((partition) =>
         partition.values.every((value, index) => {
           const other = values[index];

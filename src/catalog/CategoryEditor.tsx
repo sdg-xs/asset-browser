@@ -1,11 +1,14 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type {
   CatalogLibrary,
   CatalogCategory,
   FieldMapping,
 } from "../../shared/catalog-library.js";
 import type { CatalogAction } from "./api.js";
-import { reusableField } from "../../shared/catalog-observations.js";
+import {
+  reusableField,
+  parameterSourceKeys,
+} from "../../shared/catalog-observations.js";
 export function CategoryEditor({
   state,
   pending,
@@ -70,9 +73,24 @@ function CategoryForm({
   );
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [reconcile, setReconcile] = useState(false);
+  useEffect(() => {
+    if (!reconcile) return;
+    const saved = state.categories.find((c) => c.id === id);
+    if (saved) {
+      setName(saved.name);
+      setAliases(saved.aliases.join(", "));
+      setReconcile(false);
+    }
+  }, [state, id, reconcile]);
   const suggestions = (template?.suggestions ?? []).filter(
     (s) =>
-      reusableField({ name: s.label }) && !mappings.some((m) => m.key === s.key),
+      reusableField({ name: s.label }) &&
+      !mappings.some((m) =>
+        parameterSourceKeys(s).some((key) =>
+          parameterSourceKeys(m).includes(key),
+        ),
+      ),
   );
   const savedCategory = state.categories.find((c) => c.id === id);
   const observed = state.sources
@@ -89,7 +107,7 @@ function CategoryForm({
     for (const mapping of mappings) {
       const units = new Set(
         observed
-          .filter((f) => f.key === mapping.key)
+          .filter((f) => parameterSourceKeys(mapping).includes(f.key))
           .flatMap((f) =>
             f.values.flatMap((v) =>
               v.normalized.kind === "number" ? [v.normalized.unit] : [],
@@ -111,7 +129,7 @@ function CategoryForm({
       setNotice("Specification template saved.");
   };
   return (
-    <>
+    <fieldset className="category-fields" disabled={pending}>
       <form
         className="category-form"
         onSubmit={(e) => {
@@ -125,7 +143,10 @@ function CategoryForm({
               .map((a) => a.trim())
               .filter(Boolean),
           }).then((ok) => {
-            if (ok) setNotice("Category and aliases saved.");
+            if (ok) {
+              setNotice("Category and aliases saved.");
+              setReconcile(true);
+            }
           });
         }}
       >
@@ -162,14 +183,24 @@ function CategoryForm({
             return (
               <fieldset className="mapping" key={mapping.key}>
                 <legend>
-                  {observed.find((f) => f.key === mapping.key)?.name ??
-                    mapping.label}
+                  {observed.find((f) =>
+                    parameterSourceKeys(mapping).includes(f.key),
+                  )?.name ?? mapping.label}
                 </legend>
                 <label>
                   Source property
                   <select
-                    value={mapping.key}
-                    onChange={(e) => change({ key: e.target.value })}
+                    multiple
+                    aria-label="Source property"
+                    value={parameterSourceKeys(mapping)}
+                    onChange={(e) =>
+                      change({
+                        sourceKeys: Array.from(
+                          e.target.selectedOptions,
+                          (option) => option.value,
+                        ),
+                      })
+                    }
                   >
                     {[...new Map(observed.map((f) => [f.key, f])).values()].map(
                       (f) => (
@@ -178,10 +209,18 @@ function CategoryForm({
                         </option>
                       ),
                     )}
-                    {!observed.some((f) => f.key === mapping.key) && (
-                      <option value={mapping.key}>{mapping.key}</option>
-                    )}
+                    {parameterSourceKeys(mapping)
+                      .filter((key) => !observed.some((f) => f.key === key))
+                      .map((key) => (
+                        <option key={key} value={key}>
+                          {key}
+                        </option>
+                      ))}
                   </select>
+                  <small>
+                    Select all source properties that express this parameter.
+                    Conflicting overlapping values remain visible.
+                  </small>
                 </label>
                 <label>
                   Display label
@@ -251,7 +290,20 @@ function CategoryForm({
                 <span>
                   {s.label} · {s.canonicalUnit ?? "Text / unknown unit"}
                 </span>
-                <button onClick={() => setMappings((all) => [...all, s])}>
+                <button
+                  onClick={() =>
+                    setMappings((all) => [
+                      ...all,
+                      {
+                        ...s,
+                        key: parameterSourceKeys(s).includes(s.key)
+                          ? crypto.randomUUID()
+                          : s.key,
+                        sourceKeys: parameterSourceKeys(s),
+                      },
+                    ])
+                  }
+                >
                   Confirm mapping {s.label}
                 </button>
               </div>
@@ -261,6 +313,6 @@ function CategoryForm({
           )}
         </>
       )}
-    </>
+    </fieldset>
   );
 }

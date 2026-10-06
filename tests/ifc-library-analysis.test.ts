@@ -86,9 +86,17 @@ describe("real IFC reusable library analysis", () => {
     );
     const fields = snapshot.types[0]?.fields;
     expect(fields?.find((f) => f.name === "Width")?.values).toEqual([
-      { rawValue: "", normalized: { kind: "missing" }, occurrenceIds: [30] },
+      {
+        rawValue: "",
+        normalized: { kind: "missing" },
+        occurrenceIds: [30],
+        sourceUnit: null,
+        sourceMeasure: "IFCLABEL",
+      },
       {
         rawValue: "900",
+        sourceUnit: "m",
+        sourceMeasure: "IFCLENGTHMEASURE",
         normalized: { kind: "number", value: 900, unit: "m" },
         occurrenceIds: [31],
       },
@@ -115,6 +123,8 @@ describe("real IFC reusable library analysis", () => {
     ).toEqual([
       {
         rawValue: "0",
+        sourceUnit: "m",
+        sourceMeasure: "IFCLENGTHMEASURE",
         normalized: { kind: "number", value: 0, unit: "m" },
         occurrenceIds: [30],
       },
@@ -263,7 +273,12 @@ describe("real IFC reusable library analysis", () => {
     expect(
       snapshot.types[0]?.fields.find((f) => f.name === "Width")?.values[0]
         ?.normalized,
-    ).toEqual({ kind: "text", value: "800", unit: "W" });
+    ).toEqual({
+      kind: "text",
+      value: "800",
+      unit: "W",
+      unresolvedMeasure: true,
+    });
     expect(
       snapshot.types[0]?.fields.find((f) => f.name === "Count"),
     ).toMatchObject({
@@ -317,5 +332,50 @@ describe("real IFC reusable library analysis", () => {
       "Analyzing 250 / 252 classified occurrences",
       "Analyzed 252 classified occurrences",
     ]);
+  });
+});
+
+it("retains per-value original units and measure through snapshot serialization", async () => {
+  const snapshot = await analyze(`${shared.replace("(#30,#31)", "(#30)")}
+#63=IFCPROPERTYSINGLEVALUE('Width',$,IFCLENGTHMEASURE(800000.),#70);
+#64=IFCPROPERTYSET('0000000000000000000064',#5,'Dimensions',$,(#63));
+#65=IFCRELDEFINESBYPROPERTIES('0000000000000000000065',#5,$,$,(#31),#64);
+#70=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);`);
+  const { librarySnapshotSchema } =
+    await import("../shared/catalog-library.js");
+  const restored = librarySnapshotSchema.parse(
+    JSON.parse(JSON.stringify(snapshot)),
+  );
+  expect(
+    restored.types[0]?.fields.find((f) => f.name === "Width")?.values,
+  ).toMatchObject([
+    {
+      rawValue: "800",
+      sourceUnit: "m",
+      sourceMeasure: "IFCLENGTHMEASURE",
+      occurrenceIds: [30],
+    },
+    {
+      rawValue: "800000",
+      sourceUnit: "mm",
+      sourceMeasure: "IFCLENGTHMEASURE",
+      occurrenceIds: [31],
+    },
+  ]);
+});
+it("retains an unsupported SI prefix in its unknown unit label", async () => {
+  const snapshot = await analyze(
+    shared.replace("IFCLENGTHMEASURE", "IFCPRESSUREMEASURE"),
+    "",
+    "#12=IFCUNITASSIGNMENT((#70));\\n#70=IFCSIUNIT(*,.PRESSUREUNIT.,.KILO.,.PASCAL.);".replace(
+      "\\n",
+      "\n",
+    ),
+  );
+  expect(
+    snapshot.types[0]?.fields.find((f) => f.name === "Width")?.values[0],
+  ).toMatchObject({
+    sourceUnit: "KILO PASCAL",
+    normalized: { kind: "text", unit: "KILO PASCAL", unresolvedMeasure: true },
   });
 });

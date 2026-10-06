@@ -8,7 +8,7 @@ The user-approved 2026-10-06 [curated design](superpowers/specs/2026-10-06-curat
 - Imported types become drafts. Staff explicitly approves complete entries, individually or in a reviewed batch. A readable name, canonical category and known reusable specification are required for a generic definition. A product requires staff-confirmed manufacturer and model.
 - Staff can edit curated definitions, archive/restore them, confirm categories/aliases/templates, resolve unknown/conflicting specifications, review duplicates, merge and split confirmed variants. Original IFC properties stay read-only.
 - Equal names never automatically merge. Differences and missing evidence must be visible before confirmation. Merge retains target overrides and archives absorbed definitions; split preserves occurrence partitions. Both results require review.
-- Imported category labels remain distinct until staff confirms aliases. Template mappings have source keys, display labels, data kinds, canonical units and specification/variant roles. Source/name hints remain suggestions.
+- Imported category labels remain distinct until staff confirms aliases. Each template parameter has a stable key, one or more source property keys, a display label, data kind, canonical unit and specification/variant role. Comparison, conflicts, overrides and splitting use parameter identity rather than display text. Source/name hints remain suggestions.
 
 ## Source interpretation
 
@@ -18,7 +18,7 @@ Recognized SI/conversion-based length, area, volume, power, flow and voltage nor
 
 ## Persistence and geometry
 
-`library.json` preserves source/index/visibility state. A separate schema-version-1 `catalog-library.json` preserves definitions, source observations, categories, templates and overrides. Atomic serialized writes and expected catalog revisions prevent stale tabs from overwriting staff decisions. Same-fingerprint import is idempotent; changed sources retain overrides and flag review.
+`library.json` preserves source/index/visibility state. A separate schema-version-1 `catalog-library.json` preserves definitions, source observations, categories, templates and overrides. Atomic serialized writes and expected catalog revisions prevent stale tabs from overwriting staff decisions. Same-fingerprint import is idempotent; changed sources retain overrides and frozen accepted specifications, and flag approved entries in Needs review. Geometry rebinding never implicitly expands a variant subset.
 
 Source hiding does not delete files or approved entries. Card click opens side inspection; the arrow opens a centered native dialog with focus return. Preview uses the current preferred source/occurrence, then only explicitly equivalent references. Current inventory/fingerprint/type/membership checks prevent silent rebinding to a different asset. Geometry errors stay local; approved definitions remain usable without a model.
 

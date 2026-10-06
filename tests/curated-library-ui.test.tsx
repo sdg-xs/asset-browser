@@ -1235,3 +1235,222 @@ it("explains a real incomplete approval rejection inside the arrow preview", asy
   expect(dialog).toHaveProperty("open", true);
   expect(f.getState().entries[0]?.status).toBe("draft");
 });
+
+describe("final review workflow regressions", () => {
+  it("includes refreshed approved definitions in the review workspace", async () => {
+    const f = fixture(true);
+    await f.api.execute({
+      kind: "import",
+      expectedRevision: f.getState().revision,
+      snapshot: { ...snapshot, fingerprint: "v2" },
+    });
+    render(<CatalogWorkspace catalogApi={f.api} sourceApi={f.sources} />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Needs review" }),
+    );
+    expect(
+      await screen.findByRole("button", { name: "Inspect Cabinet" }),
+    ).toBeTruthy();
+  });
+  it("retains a split membership when acknowledging the unchanged geometry revision", async () => {
+    const f = fixture(true);
+    const entry = required(f.getState().entries[0]);
+    entry.sourceReferences[0] = {
+      ...required(entry.sourceReferences[0]),
+      occurrenceIds: [2],
+    };
+    render(<CatalogWorkspace catalogApi={f.api} sourceApi={f.sources} />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Inspect Cabinet" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Preferred geometry" }));
+    fireEvent.click(
+      screen.getByLabelText(
+        "I reviewed the current source revision and its occurrence membership",
+      ),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save preferred geometry" }),
+    );
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(f.getState().entries[0]?.sourceReferences[0]?.occurrenceIds).toEqual(
+      [2],
+    );
+  });
+  it("retains server-added aliases when saving a renamed category again", async () => {
+    const f = fixture();
+    render(<CatalogWorkspace catalogApi={f.api} sourceApi={f.sources} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Categories" }));
+    fireEvent.change(screen.getByLabelText("Category to edit"), {
+      target: { value: required(f.getState().categories[0]).id },
+    });
+    fireEvent.change(screen.getByLabelText("Canonical category name"), {
+      target: { value: "Casework" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save category and aliases" }),
+    );
+    await screen.findByText("Category and aliases saved.");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save category and aliases" }),
+    );
+    await waitFor(() => expect(f.api.execute).toHaveBeenCalledTimes(2));
+    expect(f.getState().categories[0]?.aliases).toContain("Cabinets");
+  });
+  it("bounds review rendering and limits batch selection to the stated page", async () => {
+    const f = fixture();
+    const entry = required(f.getState().entries[0]);
+    for (let i = 1; i < 65; i++)
+      f.getState().entries.push({
+        ...structuredClone(entry),
+        id: "page-" + i,
+        definition: { ...entry.definition, name: "Cabinet " + i },
+      });
+    render(<CatalogWorkspace catalogApi={f.api} sourceApi={f.sources} />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Needs review" }),
+    );
+    expect(
+      screen.getAllByRole("button", { name: /^Inspect Cabinet/ }),
+    ).toHaveLength(50);
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+    expect(
+      screen.getAllByRole("button", { name: /^Inspect Cabinet/ }),
+    ).toHaveLength(15);
+    fireEvent.click(screen.getByLabelText("Select all 15 visible definitions"));
+    expect(
+      screen.getByRole("button", { name: "Approve selected (15)" }),
+    ).toBeTruthy();
+  });
+});
+
+it("selectively rebinds a refreshed variant without adding every occurrence", async () => {
+  const f = fixture(true);
+  const entry = required(f.getState().entries[0]);
+  entry.sourceReferences[0] = {
+    ...required(entry.sourceReferences[0]),
+    occurrenceIds: [2],
+  };
+  const updated = {
+    ...snapshot,
+    fingerprint: "v2",
+    types: snapshot.types.map((t) => ({
+      ...t,
+      occurrenceIds: [10, 11],
+      fields: t.fields.map((field) => ({
+        ...field,
+        values: [
+          {
+            rawValue: "600",
+            normalized: { kind: "number" as const, value: 0.6, unit: "m" },
+            occurrenceIds: [10],
+          },
+          {
+            rawValue: "900",
+            normalized: { kind: "number" as const, value: 0.9, unit: "m" },
+            occurrenceIds: [11],
+          },
+        ],
+      })),
+    })),
+  };
+  await f.api.execute({
+    kind: "import",
+    expectedRevision: f.getState().revision,
+    snapshot: updated,
+  });
+  render(<CatalogWorkspace catalogApi={f.api} sourceApi={f.sources} />);
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Inspect Cabinet" }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Preferred geometry" }));
+  fireEvent.click(
+    screen.getByLabelText(
+      "I reviewed the current source revision and its occurrence membership",
+    ),
+  );
+  expect(
+    screen.getByRole("button", { name: "Save preferred geometry" }),
+  ).toHaveProperty("disabled", true);
+  fireEvent.click(screen.getByLabelText("Include occurrence #10"));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Save preferred geometry" }),
+  );
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(f.getState().entries[0]?.sourceReferences[0]).toMatchObject({
+    fingerprint: "v2",
+    occurrenceIds: [10],
+  });
+});
+it("selects an available preferred source while preserving its hidden historical reference", async () => {
+  const f = fixture(true);
+  await f.api.execute({
+    kind: "import",
+    expectedRevision: f.getState().revision,
+    snapshot: { ...snapshot, modelId: "other", sourceName: "Other.ifc" },
+  });
+  const target = required(f.getState().entries[0]),
+    other = required(f.getState().entries[1]);
+  await f.api.execute({
+    kind: "merge",
+    expectedRevision: f.getState().revision,
+    targetId: target.id,
+    absorbedIds: [other.id],
+  });
+  const old = required(f.getState().entries[0]?.sourceReferences[0]),
+    visible = required(f.getState().entries[0]?.sourceReferences[1]);
+  render(<CatalogWorkspace catalogApi={f.api} sourceApi={f.sources} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Needs review" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Inspect Cabinet" }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Preferred geometry" }));
+  fireEvent.change(screen.getByLabelText("Preferred source"), {
+    target: { value: visible.sourceId },
+  });
+  fireEvent.click(
+    screen.getByRole("button", { name: "Save preferred geometry" }),
+  );
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(f.getState().entries[0]?.sourceReferences).toEqual([visible, old]);
+});
+it("assigns differently named source properties to one category parameter", async () => {
+  const f = fixture();
+  await f.api.execute({
+    kind: "import",
+    expectedRevision: f.getState().revision,
+    snapshot: {
+      ...snapshot,
+      modelId: "other",
+      types: snapshot.types.map((t) => ({
+        ...t,
+        fields: t.fields.map((field) => ({
+          ...field,
+          key: "overall",
+          name: "Overall width",
+        })),
+      })),
+    },
+  });
+  render(<CatalogWorkspace catalogApi={f.api} sourceApi={f.sources} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Categories" }));
+  fireEvent.change(screen.getByLabelText("Category to edit"), {
+    target: { value: required(f.getState().categories[0]).id },
+  });
+  fireEvent.click(
+    screen.getByRole("button", { name: "Confirm mapping Width" }),
+  );
+  const select = screen.getByLabelText("Source property");
+  for (const option of within(select).getAllByRole("option")) {
+    if (option instanceof HTMLOptionElement) option.selected = true;
+  }
+  fireEvent.change(select);
+  fireEvent.click(
+    screen.getByRole("button", { name: "Save specification template" }),
+  );
+  await screen.findByText("Specification template saved.");
+  const mapping = required(f.getState().templates[0]?.mappings[0]);
+  expect(mapping.key).not.toBe("width");
+  expect(mapping.sourceKeys).toEqual(["width", "overall"]);
+  expect(f.getState().templates[0]?.mappings).toHaveLength(1);
+});

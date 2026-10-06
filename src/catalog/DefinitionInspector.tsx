@@ -13,7 +13,12 @@ import {
   AssetInspector,
   type ViewerLoader,
 } from "../components/AssetInspector.js";
-import { entrySpecifications, fieldLabel, valueText } from "./display.js";
+import {
+  entrySpecifications,
+  fieldLabel,
+  entryFieldLabel,
+  valueText,
+} from "./display.js";
 import { useDefinitionPreview } from "./useDefinitionPreview.js";
 export function DefinitionInspector({
   state,
@@ -86,6 +91,13 @@ export function DefinitionInspector({
         </span>
         <h2>{entry.definition.name}</h2>
         <p>{entry.definition.description}</p>
+        {entry.reviewFlags.length > 0 && (
+          <p className="review-issues">
+            Source changed. Published specifications are retained. Review its
+            current observations and preferred geometry before accepting
+            changes.
+          </p>
+        )}
         {entry.definition.kind === "product" && (
           <p>
             {entry.definition.manufacturer.value} ·{" "}
@@ -97,7 +109,7 @@ export function DefinitionInspector({
           {Object.entries(entrySpecifications(state, entry)).map(
             ([key, value]) => (
               <div key={key}>
-                <dt>{fieldLabel(state, key, entry.definition.categoryId)}</dt>
+                <dt>{entryFieldLabel(state, entry, key)}</dt>
                 <dd>{valueText(value)}</dd>
               </div>
             ),
@@ -195,8 +207,12 @@ export function DefinitionInspector({
                 {source?.observation.fields.map((f) => (
                   <p key={f.key}>
                     {f.pset} / {f.name}:{" "}
-                    {f.values.map((v) => v.rawValue || "(blank)").join(" / ")}{" "}
-                    {f.unit ?? ""}
+                    {f.values
+                      .map(
+                        (v) =>
+                          `${v.rawValue || "(blank)"} ${v.sourceUnit === undefined ? (f.unit ?? "Unknown unit") : (v.sourceUnit ?? "Unknown unit")} · ${v.sourceMeasure ?? f.measure}`,
+                      )
+                      .join(" / ")}
                   </p>
                 ))}
               </section>

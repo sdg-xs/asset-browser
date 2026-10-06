@@ -27,8 +27,11 @@ export function CatalogSidebar({
               {name}
               {name === "Needs review" && (
                 <span>
-                  {state?.entries.filter((e) => e.status === "draft").length ??
-                    0}
+                  {state?.entries.filter(
+                    (e) =>
+                      e.status === "draft" ||
+                      (e.status === "approved" && e.reviewFlags.length > 0),
+                  ).length ?? 0}
                 </span>
               )}
             </button>

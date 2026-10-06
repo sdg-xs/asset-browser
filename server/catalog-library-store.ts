@@ -17,6 +17,8 @@ import {
 } from "../shared/catalog-rules.js";
 import type { LibraryModel } from "../shared/contracts.js";
 import { LibraryError, LibraryStore } from "./library-store.js";
+import { migrateCatalog } from "../shared/catalog-publication.js";
+import { changedReferences } from "../shared/catalog-references.js";
 
 function missingFile(error: unknown): boolean {
   return error instanceof Error && "code" in error && error.code === "ENOENT";
@@ -25,10 +27,11 @@ function invalidSource(message: string): never {
   throw new LibraryError("INVALID_SOURCE_REFERENCE", message, 400);
 }
 function sameMembers(left: number[], right: number[]): boolean {
+  const rightMembers = new Set(right);
   return (
     left.length === right.length &&
     new Set(left).size === left.length &&
-    left.every((id) => right.includes(id))
+    left.every((id) => rightMembers.has(id))
   );
 }
 function validateSnapshot(
@@ -113,7 +116,7 @@ export class CatalogLibraryStore {
       const raw: unknown = JSON.parse(
         await readFile(join(store.dataRoot, "catalog-library.json"), "utf8"),
       );
-      store.state = catalogLibrarySchema.parse(raw);
+      store.state = migrateCatalog(catalogLibrarySchema.parse(raw));
     } catch (error) {
       if (!missingFile(error)) {
         if (error instanceof SyntaxError || error instanceof ZodError)
@@ -161,7 +164,13 @@ export class CatalogLibraryStore {
         );
       }
       if (command.kind === "edit" && command.confirmedSourceReferences) {
-        const references = command.confirmedSourceReferences;
+        const entry = this.state.entries.find((e) => e.id === command.entryId);
+        if (!entry)
+          throw new CatalogDomainError("NOT_FOUND", "Entry not found.");
+        const references = changedReferences(
+          entry,
+          command.confirmedSourceReferences,
+        );
         const requirements = references.map((reference) => {
           const source = this.state.sources.find(
             (source) => source.id === reference.sourceId,

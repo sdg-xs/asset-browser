@@ -5,6 +5,7 @@ import type {
   FieldMapping,
 } from "./catalog-library.js";
 import { reusableField } from "./catalog-observations.js";
+import { parameterSourceKeys } from "./catalog-observations.js";
 
 export function importSnapshot(
   state: CatalogLibrary,
@@ -27,7 +28,11 @@ export function importSnapshot(
         candidate.modelId === snapshot.modelId &&
         candidate.observation.typeGlobalId === observation.typeGlobalId,
     );
-    if (source?.fingerprint === snapshot.fingerprint && source.current)
+    if (
+      source?.fingerprint === snapshot.fingerprint &&
+      source.current &&
+      source.analysisVersion === snapshot.analysisVersion
+    )
       continue;
     changed = true;
     if (source) {
@@ -35,10 +40,12 @@ export function importSnapshot(
       source.sourceName = snapshot.sourceName;
       source.revision += 1;
       source.observation = observation;
+      source.analysisVersion = snapshot.analysisVersion;
       source.current = true;
       flagReferences(state, source.id);
     } else {
       source = {
+        analysisVersion: snapshot.analysisVersion,
         id: crypto.randomUUID(),
         modelId: snapshot.modelId,
         fingerprint: snapshot.fingerprint,
@@ -114,8 +121,12 @@ function seedCategories(
     for (const field of observation.fields.filter(reusableField)) {
       if (
         !template ||
-        template.suggestions.some((mapping) => mapping.key === field.key) ||
-        template.mappings.some((mapping) => mapping.key === field.key)
+        template.suggestions.some((mapping) =>
+          parameterSourceKeys(mapping).includes(field.key),
+        ) ||
+        template.mappings.some((mapping) =>
+          parameterSourceKeys(mapping).includes(field.key),
+        )
       )
         continue;
       const numeric = field.values.find(

@@ -403,4 +403,84 @@ describe("persistent curated catalog API", () => {
       404,
     );
   });
+
+  it("retains hidden historical provenance while selecting a visible preferred source", async () => {
+    let state = await imported();
+    const uploaded = await request(app)
+      .post("/api/models")
+      .attach("file", fixture.ifc, "B.ifc")
+      .expect(201);
+    const model = LibraryModelsSchema.parse([uploaded.body])[0];
+    if (!model) throw Error("fixture model");
+    const second = {
+      ...snapshot,
+      modelId: model.id,
+      fingerprint: model.fingerprint,
+      sourceName: model.name,
+    };
+    await request(app)
+      .put(`/api/models/${model.id}/index`)
+      .send({
+        ...emptyIndex(model),
+        types: second.types.map((t) => ({
+          ...t,
+          id: t.typeGlobalId,
+          modelId: model.id,
+          representativeId: t.occurrenceIds[0],
+        })),
+      })
+      .expect(200);
+    state = catalogLibrarySchema.parse(
+      (
+        await command({
+          kind: "import",
+          expectedRevision: state.revision,
+          snapshot: second,
+        })
+      ).body,
+    );
+    const target = state.entries[0],
+      other = state.entries[2];
+    if (!target || !other) throw Error("fixture entries");
+    state = catalogLibrarySchema.parse(
+      (
+        await command({
+          kind: "merge",
+          expectedRevision: state.revision,
+          targetId: target.id,
+          absorbedIds: [other.id],
+        })
+      ).body,
+    );
+    const merged = state.entries[0];
+    if (!merged) throw Error("merged");
+    const old = merged.sourceReferences[0],
+      visible = merged.sourceReferences[1];
+    if (!old || !visible) throw Error("references");
+    await request(app).delete(`/api/models/${snapshot.modelId}`).expect(204);
+    state = catalogLibrarySchema.parse(
+      (
+        await command({
+          kind: "edit",
+          expectedRevision: state.revision,
+          entryId: merged.id,
+          definition: merged.definition,
+          confirmedSourceReferences: [visible, old],
+        })
+      ).body,
+    );
+    expect(state.entries[0]?.sourceReferences).toEqual([visible, old]);
+    app = await createApp(fixture);
+    expect((await read()).entries[0]?.sourceReferences).toEqual([visible, old]);
+    await command(
+      {
+        kind: "edit",
+        expectedRevision: state.revision,
+        entryId: merged.id,
+        definition: merged.definition,
+        confirmedSourceReferences: [visible, { ...old, equivalent: true }],
+      },
+      404,
+    );
+  });
 });
