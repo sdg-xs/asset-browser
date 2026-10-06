@@ -268,4 +268,48 @@ describe("localhost library API", () => {
       })
       .expect(400);
   });
+
+  it("persists creation indexes across restart without requiring a browse index", async () => {
+    const model = await firstModel();
+    const index = { schemaVersion: 1, modelId: model.id, fingerprint: model.fingerprint, candidates: [{ key: 'element:component', identity: { kind: 'element', globalId: 'component' }, name: 'Component', ifcClass: 'IFCBUILDINGELEMENTPROXY', categories: [], classificationIssues: [], occurrenceIds: [30], representativeId: 30 }], stats: { elements: 1, candidates: 1, classified: 0, unclassified: 1, untyped: 1 } };
+    const response = await request(app).put(`/api/models/${model.id}/creation-index`).send(index).expect(200);
+    expect(response.body).toEqual(index);
+    const restarted = await createApp(fixture);
+    const models = LibraryModelsSchema.parse((await request(restarted).get('/api/models').expect(200)).body);
+    expect(models[0]).toMatchObject({ index: null, creationIndex: index });
+  });
+
+  it("rejects stale, duplicate and invalid-member creation indexes without changing persisted inventory", async () => {
+    const model = await firstModel();
+    const index = { schemaVersion: 1, modelId: model.id, fingerprint: model.fingerprint, candidates: [{ key: 'type:component', identity: { kind: 'type', globalId: 'component' }, name: 'Component', ifcClass: 'IFCBUILDINGELEMENTPROXYTYPE', categories: ['Sensor'], classificationIssues: [], occurrenceIds: [30, 31], representativeId: 30 }], stats: { elements: 2, candidates: 1, classified: 1, unclassified: 0, untyped: 0 } };
+    await request(app).put(`/api/models/${model.id}/creation-index`).send(index).expect(200);
+    const inventory = await readFile(join(fixture.dataRoot, 'library.json'), 'utf8');
+    const candidate = index.candidates[0];
+    if (!candidate) throw new Error('Expected candidate');
+    const invalid = [
+      { ...index, fingerprint: 'old' },
+      { ...index, candidates: [candidate, candidate] },
+      { ...index, candidates: [{ ...candidate, representativeId: 999 }] },
+      { ...index, candidates: [{ ...candidate, occurrenceIds: [30, 30] }] },
+      { ...index, candidates: [{ ...candidate, key: 'element:component' }] },
+      { ...index, candidates: [{ ...candidate, occurrenceIds: [] }] },
+      { ...index, candidates: [{ ...candidate, occurrenceIds: [-1] }] },
+      { ...index, stats: { ...index.stats, elements: 99 } },
+      { ...index, modelId: '00000000-0000-4000-8000-000000000000' },
+      { ...index, candidates: [candidate, { ...candidate, key: 'type:other', identity: { kind: 'type', globalId: 'other' } }], stats: { elements: 4, candidates: 2, classified: 2, unclassified: 0, untyped: 0 } },
+    ];
+    for (const [position, value] of invalid.entries()) {
+      await request(app).put(`/api/models/${model.id}/creation-index`).send(value).expect(position === 0 ? 409 : 400);
+      expect(await readFile(join(fixture.dataRoot, 'library.json'), 'utf8')).toBe(inventory);
+    }
+    expect((await firstModel()).creationIndex).toEqual(index);
+  });
+
+  it("invalidates creation discovery when the source revision changes", async () => {
+    const model = await firstModel();
+    const index = { schemaVersion: 1, modelId: model.id, fingerprint: model.fingerprint, candidates: [], stats: { elements: 0, candidates: 0, classified: 0, unclassified: 0, untyped: 0 } };
+    await request(app).put(`/api/models/${model.id}/creation-index`).send(index).expect(200);
+    await writeFile(fixture.sourcePath, await readFile(new URL('./fixtures/assets.ifc', import.meta.url)));
+    expect((await firstModel()).creationIndex).toBeUndefined();
+  });
 });

@@ -15,6 +15,9 @@ import type {
   PreviewGeometry,
   PropertyGroup,
 } from "../../shared/contracts.js";
+import { buildCreationCatalog, type CreationOccurrence } from "./creation-catalog.js";
+import type { CreationIndex } from "../../shared/asset-creation.js";
+import { effectiveCategory } from "./catalog.js";
 import { buildCatalog, type Candidate } from "./catalog.js";
 import { analyzeLibrary, type PropertyObservation } from "./analyze-library.js";
 import { AnalysisUnits } from "./analysis-units.js";
@@ -74,7 +77,7 @@ export class IfcReader {
   private occurrenceSets = new Map<number, number[]>();
   private occurrenceTypes = new Map<number, number | null>();
   private typeEntities = new Map<number, Entity>();
-  private categories = new Map<number, string | undefined>();
+  private classifications = new Map<number, { present: boolean; value: string | undefined; issues: string[] }>();
   private propertySets = new Map<number, PropertyObservation[]>();
   private analysis: {
     index: CatalogIndex;
@@ -111,6 +114,7 @@ export class IfcReader {
     model: Pick<LibraryModel, "id" | "fingerprint"> &
       Partial<Pick<LibraryModel, "name">>,
     progress: Progress = () => {},
+    purpose: "browse" | "creation" = "browse",
   ): CatalogIndex {
     this.close();
     if (
@@ -172,6 +176,7 @@ export class IfcReader {
         }
         const instanceCategory = this.category(
           this.occurrenceSets.get(elementId) ?? [],
+          purpose,
         );
         candidates.push({
           elementId,
@@ -180,6 +185,7 @@ export class IfcReader {
             instanceCategory === undefined
               ? this.category(
                   type?.HasPropertySets?.map((ref) => ref.value) ?? [],
+                  purpose,
                 )
               : undefined,
           type: type?.GlobalId?.value
@@ -218,41 +224,81 @@ export class IfcReader {
     }
   }
 
-  private category(setIds: number[]): string | undefined {
+  private classification(setIds: number[]): { present: boolean; value: string | undefined; issues: string[] } {
     const values = new Set<string>();
-    for (const id of setIds) {
-      if (!this.categories.has(id)) {
+    const issues: string[] = [];
+    let present = false;
+    for (const id of new Set(setIds)) {
+      let cached = this.classifications.get(id);
+      if (!cached) {
         const set = this.entity(id);
-        let value: string | undefined;
-        if (
-          set.type === IFCPROPERTYSET &&
-          set.Name?.value === "Identity Data"
-        ) {
+        const setValues = new Set<string>();
+        const setIssues: string[] = [];
+        let setPresent = false;
+        if (set.type === IFCPROPERTYSET && set.Name?.value === "Identity Data")
           for (const ref of set.HasProperties ?? []) {
             const property = this.entity(ref.value);
             if (property.Name?.value !== "Generic Hard Asset") continue;
+            setPresent = true;
             if (property.type !== IFCPROPERTYSINGLEVALUE)
-              throw new Error(
-                `Unsupported Generic Hard Asset property kind at #${ref.value}.`,
-              );
-            const next = String(property.NominalValue?.value ?? "").trim();
-            if (value !== undefined && value !== next)
-              throw new Error(
-                `Conflicting Generic Hard Asset values in property set #${id}.`,
-              );
-            value = next;
+              setIssues.push(`Unsupported Generic Hard Asset property kind at #${ref.value}.`);
+            else setValues.add(String(property.NominalValue?.value ?? "").trim());
           }
-        }
-        this.categories.set(id, value);
+        if (setValues.size > 1)
+          setIssues.push(`Conflicting Generic Hard Asset values in property set #${id}.`);
+        cached = { present: setPresent, value: setIssues.length ? undefined : setValues.values().next().value, issues: setIssues };
+        this.classifications.set(id, cached);
       }
-      const value = this.categories.get(id);
-      if (value !== undefined) values.add(value);
+      present ||= cached.present;
+      issues.push(...cached.issues);
+      if (cached.value !== undefined) values.add(cached.value);
     }
     if (values.size > 1)
-      throw new Error(
-        `Conflicting Identity Data classifications in property sets ${setIds.join(", ")}.`,
-      );
-    return values.values().next().value;
+      issues.push(`Conflicting Identity Data classifications in property sets ${setIds.join(", ")}.`);
+    return { present, value: issues.length ? undefined : values.values().next().value, issues };
+  }
+
+  private category(setIds: number[], purpose: "browse" | "creation"): string | undefined {
+    const classification = this.classification(setIds);
+    if (classification.issues.length) {
+      if (purpose === "browse") throw new Error(classification.issues[0]);
+      return classification.present ? "" : undefined;
+    }
+    return classification.value;
+  }
+
+  discoverAssets(progress: Progress = () => {}): CreationIndex {
+    const analysis = this.analysis;
+    if (!analysis) throw new Error("Open an IFC model before creation discovery.");
+    try {
+      const occurrences: CreationOccurrence[] = [];
+      for (const elementId of this.candidates) {
+        if (occurrences.length % 1000 === 0)
+          progress(`Discovering ${occurrences.length.toLocaleString()} / ${this.candidates.size.toLocaleString()} physical elements`);
+        const element = this.entity(elementId);
+        const typeId = this.occurrenceTypes.get(elementId);
+        const type = typeId ? this.typeEntities.get(typeId) : undefined;
+        const instance = this.classification(this.occurrenceSets.get(elementId) ?? []);
+        const classification = instance.present ? instance : this.classification(type?.HasPropertySets?.map(ref => ref.value) ?? []);
+        const typed = type?.GlobalId?.value?.trim() ? type : undefined;
+        const identityEntity = typed ?? element;
+        const globalId = identityEntity.GlobalId?.value?.trim();
+        if (!globalId) throw new Error(`IFC component #${elementId} has no stable GlobalId.`);
+        const ifcClass = this.api.GetNameFromTypeCode(identityEntity.type).toUpperCase();
+        occurrences.push({
+          identity: { kind: typed ? "type" : "element", globalId }, elementId, ifcClass,
+          name: typed?.Name?.value?.trim() || element.Name?.value?.trim() || ifcClass,
+          category: effectiveCategory(classification.value, undefined),
+          classificationIssues: classification.issues,
+        });
+      }
+      const index = buildCreationCatalog({ modelId: analysis.index.modelId, fingerprint: analysis.index.fingerprint }, occurrences);
+      progress(`Discovered ${index.candidates.length.toLocaleString()} creation candidates`);
+      return index;
+    } catch (error) {
+      this.close();
+      throw error;
+    }
   }
 
   private assertElement(elementId: number): void {
@@ -487,7 +533,7 @@ export class IfcReader {
     this.occurrenceSets.clear();
     this.occurrenceTypes.clear();
     this.typeEntities.clear();
-    this.categories.clear();
+    this.classifications.clear();
   }
   dispose(): void {
     this.close();

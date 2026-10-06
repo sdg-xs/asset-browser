@@ -69,6 +69,7 @@ function setup(models: LibraryModel[] = [model]) {
   const api: LibraryApi = {
     list: vi.fn().mockResolvedValue(models),
     saveIndex: vi.fn().mockResolvedValue(index),
+    saveCreationIndex: vi.fn(),
     hide: vi.fn().mockResolvedValue(undefined),
     upload: vi.fn().mockResolvedValue(model),
   };

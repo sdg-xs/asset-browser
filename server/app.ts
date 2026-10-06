@@ -8,6 +8,7 @@ import express, {
 import multer from "multer";
 import { z, ZodError } from "zod";
 import { CatalogIndexSchema } from "../shared/contracts.js";
+import { CreationIndexSchema } from "../shared/asset-creation.js";
 import { DEFAULT_MAX_UPLOAD_BYTES } from "./config.js";
 import { mountCatalogLibraryRoutes } from "./catalog-library-routes.js";
 import {
@@ -128,6 +129,10 @@ export async function createApp(
     response.json(
       await store.saveIndex(request.params.id, CatalogIndexSchema.parse(raw)),
     );
+  });
+  app.put("/api/models/:id/creation-index", async (request, response) => {
+    const raw: unknown = request.body;
+    response.json(await store.saveCreationIndex(request.params.id, CreationIndexSchema.parse(raw)));
   });
   await mountCatalogLibraryRoutes(app, store, options.dataRoot);
   app.use("/api", (_request, _response, next) => {

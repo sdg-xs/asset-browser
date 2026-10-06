@@ -114,6 +114,7 @@ function fixture(approved = false) {
     list: vi.fn(async () => []),
     hide: vi.fn(async () => {}),
     saveIndex: vi.fn(),
+    saveCreationIndex: vi.fn(),
     upload: vi.fn(),
   };
   return { api, sources, getState: () => state };

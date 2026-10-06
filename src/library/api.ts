@@ -7,6 +7,7 @@ import {
   type LibraryModel,
 } from "../../shared/contracts.js";
 import { SourceRevisionError } from '../../shared/revision.js';
+import { CreationIndexSchema, type CreationIndex } from "../../shared/asset-creation.js";
 
 async function responseData(response: Response): Promise<unknown> {
   if (response.status === 204) return undefined;
@@ -22,6 +23,7 @@ async function responseData(response: Response): Promise<unknown> {
 export interface LibraryApi {
   list(): Promise<LibraryModel[]>;
   saveIndex(index: CatalogIndex): Promise<CatalogIndex>;
+  saveCreationIndex(index: CreationIndex): Promise<CreationIndex>;
   hide(id: string): Promise<void>;
   upload(
     file: File,
@@ -29,6 +31,12 @@ export interface LibraryApi {
   ): Promise<LibraryModel>;
 }
 export const libraryApi: LibraryApi = {
+  async saveCreationIndex(index) {
+    const validated = CreationIndexSchema.parse(index);
+    return CreationIndexSchema.parse(await responseData(await fetch(`/api/models/${validated.modelId}/creation-index`, {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(validated),
+    })));
+  },
   async list() {
     return LibraryModelsSchema.parse(
       await responseData(await fetch("/api/models")),

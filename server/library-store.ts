@@ -28,6 +28,7 @@ import {
   type LibraryModel,
 } from "../shared/contracts.js";
 import { DEFAULT_MAX_UPLOAD_BYTES } from "./config.js";
+import { CreationIndexSchema, type CreationIndex } from "../shared/asset-creation.js";
 
 const StoreOptionsSchema = z.object({
   sourceRoot: z.string().min(1),
@@ -203,6 +204,7 @@ export class LibraryStore {
           modifiedAt: info.mtime.toISOString(),
           fingerprint,
           index: null,
+          creationIndex: undefined,
         };
       if (!entry.hidden) available.push(entry);
     }
@@ -276,6 +278,19 @@ export class LibraryStore {
   }
   resolveModelFile(id: string): Promise<string> {
     return this.serialized(async () => (await this.findVisible(id)).path);
+  }
+  saveCreationIndex(id: string, rawIndex: CreationIndex): Promise<CreationIndex> {
+    return this.serialized(async () => {
+      const index = CreationIndexSchema.parse(rawIndex);
+      const entry = await this.findVisible(id);
+      if (index.modelId !== id)
+        throw new LibraryError("INVALID_INDEX", "The creation index must belong to this model.", 400);
+      if (index.fingerprint !== entry.model.fingerprint)
+        throw new LibraryError("STALE_INDEX", "The source file changed. Discover its current revision again.", 409);
+      const model = { ...entry.model, creationIndex: index };
+      await this.commit(this.state.entries.map(item => item.model.id === id ? { ...item, model } : item));
+      return CreationIndexSchema.parse(index);
+    });
   }
   withCurrentModels<T>(
     requirements: { modelId: string; fingerprint: string }[],

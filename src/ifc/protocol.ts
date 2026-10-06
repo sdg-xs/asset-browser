@@ -7,8 +7,10 @@ import {
   PropertyGroupSchema,
 } from "../../shared/contracts.js";
 import { librarySnapshotSchema } from "../../shared/catalog-library.js";
+import { CreationIndexSchema } from "../../shared/asset-creation.js";
 
 export const RequestSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("discover"), requestId: z.int(), modelId: ModelIdSchema }),
   z.object({
     kind: z.literal("analyze"),
     requestId: z.int(),
@@ -20,6 +22,7 @@ export const RequestSchema = z.discriminatedUnion("kind", [
     model: LibraryModelSchema,
     fileUrl: z.string().url(),
     wasmPath: z.string().url(),
+    purpose: z.enum(["browse", "creation"]).optional(),
   }),
   z.object({
     kind: z.literal("properties"),
@@ -36,6 +39,7 @@ export const RequestSchema = z.discriminatedUnion("kind", [
 ]);
 export type WorkerRequest = z.infer<typeof RequestSchema>;
 export const ResponseSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("creation-index"), requestId: z.int(), value: CreationIndexSchema }),
   z.object({
     kind: z.literal("analysis"),
     requestId: z.int(),
