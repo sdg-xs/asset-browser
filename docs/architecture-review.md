@@ -2,6 +2,10 @@
 
 The 2026-10-06 curated catalog replaces source-model cards as the main browsing identity. It retains the existing local file service, browser IFC worker and representative viewer. [Requirements](requirements-review.md) and the [design](superpowers/specs/2026-10-06-curated-asset-library-design.md) define the approved scope.
 
+Library Upload IFC now drives `useAssetCreation` through upload, worker discovery/analysis, explicit candidate selection and `import-selected`. Creation workers retain typed and element identities; legacy Sources browsing keeps its typed index. `creation-index` persists complete membership for preview validation. Analysis version 3 includes untyped components, while legacy analysis remains readable. Catalog revision checks protect selection/import and approval; no stale command is silently retried.
+
+The creation dialog invalidates asynchronous work on cancellation and disposes its worker. Upload bytes can remain in Sources. A submitted import is atomic server work and may finish after closure, without late navigation. Reimport of the same source/fingerprint is idempotent; separately uploaded files receive separate source identities. Preview opens the current source and checks identity, fingerprint and permitted occurrence membership before loading selected geometry. Curated identity/specifications lead review, and raw source details stay collapsed. Approval eligibility shares the domain rules with batch preflight.
+
 ```mermaid
 flowchart LR
     UI[Library, review, categories and sources] --> Catalog[Catalog API and domain commands]

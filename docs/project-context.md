@@ -1,6 +1,6 @@
 # Project context
 
-The next proposed baseline is the [maintainable asset creation workflow](superpowers/specs/2026-10-06-asset-creation-workflow-design.md): Library is the front page and upload entry point; Generic Hard Asset supplies classification; staff finalize drafts in Needs review before approval. This design awaits written-spec review and is not yet implemented. [Domain vocabulary](../CONTEXT.md) defines asset as a maintainable building component and distinguishes reusable definitions from occurrences.
+The delivered [maintainable asset creation workflow](superpowers/specs/2026-10-06-asset-creation-workflow-design.md) starts in Library with Upload IFC. Browser analysis discovers typed and untyped physical components, staff selects a subset, and Needs review holds the resulting drafts until explicit approval. Generic Hard Asset supplies classification; unclassified candidates require a canonical category before approval. [Domain vocabulary](../CONTEXT.md) distinguishes reusable definitions from occurrences.
 
 The approved scope changed on 2026-10-06 from source-type browsing to a persistent staff-curated catalog. [Requirements](requirements-review.md) and the [curated design](superpowers/specs/2026-10-06-curated-asset-library-design.md) supersede the original source-GUID card/read-only curation assumptions. Read [verification](verification.md) for evidence and limits, and check current Git status/tests when resuming.
 
@@ -19,6 +19,8 @@ Staff confirms category, specifications, product identity, merge decisions and a
 IFC indexing and reusable observation analysis run in dedicated browser workers. That Open Components and Three.js render selected-occurrence web-ifc meshes without full-building Fragments conversion. Curated values lead the inspector; raw IFC remains read-only provenance.
 
 ## Local delivery
+
+Asset creation verification used production Chrome and separate port-3002 roots under `output/asset-creation-delivery/`. Controlled IFCs contained one physical occurrence and five occurrences grouped into two candidates. The final controlled state had two approved entries, one archived entry and one draft from a separate upload. Reimporting the same source preserved its existing approved entry exactly; another upload has a new source identity and can create another same-name draft. A separate read-only catalog copy retained 1,558 existing approvals and 12 drafts, and rendered real BS19/JV3 approved geometry. Normal catalog hashes and port-3001 PID stayed unchanged. See [verification](verification.md) for the evidence and limits.
 
 Use Node 24+, `npm run dev`, or `npm run build` then `npm start`. Configure `IFC_SOURCE_ROOT` for another computer. The default remains the external `PROPERTIES/<CODE>/IFC/*.ifc` folder. A fresh clone has no approved catalog until staff imports and approves real definitions. Original IFC files, managed uploads, catalog JSON and `output/playwright/` evidence are ignored local artifacts. Do not copy the validation catalog into normal managed data.
 

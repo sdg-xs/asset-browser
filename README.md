@@ -11,7 +11,9 @@ npm run dev
 
 Open `http://127.0.0.1:5173`. For production, run `npm run build`, then `npm start` and open `http://127.0.0.1:3001`. The service binds to `127.0.0.1`.
 
-A fresh catalog is empty. In Sources, select an existing model or upload an IFC file, then choose **Analyze and import drafts**. Review imported definitions in Needs review. In Categories, review category names/aliases and confirm reusable source-field mappings and variant roles. Products require confirmed manufacturer and model; generic entries require a category and readable name, and may be approved with unknown specifications. Imported values and name hints are unconfirmed. Each category parameter has a stable identity and can map multiple differently named source properties. Select those properties together in its mapping; inconsistent overlapping values remain conflicts until staff chooses a value or explicitly resolves them as unknown. Instance Mark values remain source evidence and are excluded from reusable suggestions and publication checks.
+A fresh catalog is empty. Start with **Upload IFC** in Library. Analyze a single asset or a complete model, choose the candidates to import, then finalize the selected drafts in Needs review. Upload and analysis never approve definitions. Untyped and unclassified physical components remain available for explicit selection; assign a canonical category before approval. Generic Hard Asset uses a present instance value, including blank, before type fallback. A card represents a reusable asset type or specification variant, rather than each installed occurrence. Sources retains its advanced analysis/import workflow.
+
+In Categories, review category names/aliases and confirm reusable source-field mappings and variant roles. Products require confirmed manufacturer and model; generic entries require a category and readable name, and may be approved with unknown specifications. Imported values and name hints are unconfirmed. Each category parameter has a stable identity and can map multiple differently named source properties. Select those properties together in its mapping; inconsistent overlapping values remain conflicts until staff chooses a value or explicitly resolves them as unknown. Instance Mark values remain source evidence and are excluded from reusable suggestions and publication checks.
 
 Staff exclusions are saved in the local catalog and respected by future imports. The `exclude-source-parameters` command removes selected source properties from templates, curated specifications and published specifications while retaining original IFC observations and entry approvals. The current BS19/JV3 conflict cleanup retains Area, Volume, Length, Comments, System and Diameter; other parameters outside that conflict list remain available.
 
@@ -45,8 +47,9 @@ Source routes use `shared/contracts.ts`. Catalog records and commands use `share
 - `GET /api/models/:id/file` streams revision-bound IFC bytes. `X-IFC-Fingerprint` mismatch returns `SOURCE_CHANGED` HTTP 409.
 - `POST /api/models` accepts one multipart IFC `file`; `DELETE /api/models/:id` hides it without deleting bytes.
 - `PUT /api/models/:id/index` saves an index for the matching source/fingerprint.
+- `PUT /api/models/:id/creation-index` saves complete creation candidates, including element identities and their exact occurrence membership.
 - `GET /api/catalog-library` returns the complete catalog.
-- `POST /api/catalog-library/commands` accepts `import`, `edit`, `approve`, `archive`, `restore`, `merge`, `split`, `category` and `template` commands with the current `expectedRevision` and returns the complete updated catalog. See the shared discriminated schema for exact payloads.
+- `POST /api/catalog-library/commands` accepts `import-selected`, legacy `import`, and the editing/review commands with the current `expectedRevision`. It returns the complete updated catalog. See the shared discriminated schema for exact payloads.
 
 Errors use `{ "error": { "code": "...", "message": "..." } }`. JSON requests are limited to 32 MiB. Invalid localhost hosts and cross-site mutations are rejected; requests cannot supply filesystem paths. Source fingerprints use size and modification time, not content hashes, so edits preserving both remain undetectable.
 

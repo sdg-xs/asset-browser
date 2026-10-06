@@ -86,7 +86,7 @@ export function AssetCreationDialog({
         <button disabled={currentPage + 1 >= pages} onClick={() => setPage(currentPage + 1)}>Next candidates</button>
       </nav>}
       <div className="dialog-actions">
-        <button onClick={creation.retry}>Choose another IFC</button>
+        <button onClick={() => { setFile(null); creation.retry(); }}>Choose another IFC</button>
         <button className="primary" disabled={!stage.selected.size} onClick={() => void creation.importSelected()}>
           Create {stage.selected.size} {stage.selected.size === 1 ? "draft" : "drafts"}
         </button>

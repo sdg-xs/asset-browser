@@ -36,6 +36,15 @@ function chooseFile(name = "Furniture.ifc") {
   fireEvent.click(screen.getByRole("button", { name: "Analyze IFC" }));
 }
 describe("guided asset creation", () => {
+  it("requires a fresh file after choosing another IFC", async () => {
+    const f = fixture(1);
+    render(<AssetCreationDialog sourceApi={f.api} revision={0} execute={vi.fn(async () => true)} createWorker={() => f.worker} onClose={vi.fn()} onSuccess={vi.fn()} />);
+    chooseFile(); await screen.findByRole("checkbox", { name: "Select Asset 1" });
+    fireEvent.click(screen.getByRole("button", { name: "Choose another IFC" }));
+    expect(screen.queryByText("Furniture.ifc")).toBeNull();
+    expect(screen.getByRole("button", { name: "Analyze IFC" })).toHaveProperty("disabled", true);
+    expect(screen.getByLabelText("IFC file")).toHaveProperty("value", "");
+  });
   it("offers upload in empty and populated Library and returns focus on Escape", async () => {
     for (const populated of [false, true]) {
       const f = fixture(1);

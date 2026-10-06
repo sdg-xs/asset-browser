@@ -1,10 +1,46 @@
 # Curated catalog verification
 
-Current catalog acceptance was performed on 2026-10-06 in production Chrome through Playwright CLI, Node 24.19.0, using an isolated port-3002 service and copied source indexes. Normal port 3001, normal managed state and original IFC files were preserved. The original source-browser measurements below are historical; their type-card counts do not describe approved catalog definitions.
+Current asset creation acceptance was performed on 2026-10-06 in production Chrome through Playwright CLI, Node 24.19.0. The production build preceded browser checks. Separate port-3002 data roots held controlled creation data and a compatibility copy of the existing catalog. Normal port 3001, normal managed state and original IFC files were preserved. Earlier curated/source-browser measurements below are historical; their type-card counts do not describe creation candidates.
+
+## Library asset creation delivery
+
+The controlled files derive from `tests/fixtures/assets.ifc`, a real IFC4 STEP model with metre units and extruded physical solids. They do not modify the original BS19/JV3 files.
+
+| Controlled fixture | Bytes | Physical occurrences | Candidates | Imported selection |
+| --- | ---: | ---: | ---: | --- |
+| `single-asset.ifc` | 1,716 | 1 | 1 classified, untyped element | First sensor |
+| `multi-asset.ifc` | 3,115 | 5 | 1 typed candidate with 4 occurrences; 1 unclassified, untyped element | Untyped sensor only |
+
+Production Chrome verified Upload IFC from empty and populated Library, discovery before persistence, and explicit subset import into Needs review. The single draft stayed absent from Library until approval. Staff finalized Comments as Unknown, and the approved card retained that value. Approval of the unclassified multi-file draft returned HTTP 400 with the missing-category reason; assigning Temperature sensor in Edit definition then permitted explicit approval. Actual solids rendered for both element definitions. The typed multi-file candidate was separately imported and archived; it remained absent from Library.
+
+Repeated uploads receive new source identities and can create separate same-name drafts. They do not automatically merge. A same-source/fingerprint `import-selected` repeated through the browser API returned HTTP 200 with four entries before and after, and preserved the existing approved entry exactly. A stale mutation returned HTTP 409 `REVISION_CONFLICT`, with the complete catalog unchanged. Final controlled state, also checked after service restart: revision 9, two approved entries, one archived entry and one draft from a separate upload. The approved First sensor retained its UUID and `{kind: "missing"}` Comments specification.
+
+BS19 upload and complete creation analysis found 9,204 physical elements and 3,083 candidates: 1,098 classified, 1,985 unclassified and 1,444 untyped candidates. No BS19 candidates were imported during this check. A subsequent active BS19 analysis was canceled with Escape while it displayed Downloading IFC to the browser worker. The dialog closed, focus returned to Upload IFC, Library stayed open and the catalog revision/counts stayed unchanged after the cancellation window. Uploaded source bytes remained available as the UI states.
+
+The desktop and 390×844 selection screenshots were visually inspected. At the narrow viewport the dialog measured 358×712.39 pixels, x8.5/y65.80, with document width 375 and no horizontal overflow. Candidate text wrapped and the selected untyped row remained visible with its focus outline. Native Escape restored the single fixture's Preview trigger and the upload trigger after cancellation. A 14-Tab walk in the approved BS19 preview reached 13 controls inside the dialog plus one browser body transition; it reached no background page control and returned to Close dialog. Escape restored the originating preview arrow.
+
+The browser exposed a file-picker inconsistency after Choose another IFC: the previous filename remained and Analyze stayed enabled. Clearing the local File fixed it. The new regression first failed (1 failed/13 passed), then passed (14/14). The rebuilt production browser confirmed an empty picker, no old filename and disabled Analyze after retry.
+
+Evidence retained locally: [single solid](../output/playwright/creation-single-geometry.png), [mobile subset selection](../output/playwright/creation-multi-selection-mobile.png), [approved untyped solid](../output/playwright/creation-approved-untyped-geometry.png), and [approved Library after restart](../output/playwright/creation-approved-library.png). Bounded snapshots, API results, keyboard metrics and logs are under `output/asset-creation-delivery/`, including `repeat-same-source.txt`, `stale-mutation.txt`, `cancel-confirmed.txt`, `after-cancel-delayed.txt`, `restart-state.txt` and `focus-walk.txt`.
+
+## Existing BS19/JV3 compatibility
+
+A separate compatibility root copied the existing source inventory, its managed upload bytes and the existing approved catalog. Only copied managed-upload paths were rebound to the copied upload folder; the copied approval file remained byte-for-byte identical. Its revision 6 retained 1,558 existing user approvals and 12 drafts. This check created no approvals in that copy or normal data.
+
+| Existing source | Bytes | Saved legacy elements / classified / excluded / untyped | Approved preview inspected |
+| --- | ---: | --- | --- |
+| BS19 | 122,676,603 | 9,204 / 4,938 / 4,187 / 79 | Airthings Space Mini, occurrence 1118159; reference also retains 1118216 and 1118323 |
+| JV3 | 77,787,993 | 2,838 / 1,887 / 923 / 28 | Central-Fire-Alarm:Standard, occurrence 147170 |
+
+Both actual full-model approved previews rendered in the rebuilt application. Their screenshots were visually read: [BS19 sensor](../output/playwright/creation-compatibility-bs19-geometry.png) and [JV3 alarm panel](../output/playwright/creation-compatibility-jv3-geometry.png). The approved BS19 inspector kept Source details collapsed. Compatibility console collection reported zero errors or warnings. The controlled session separately retained two expected HTTP resource errors from deliberate publication-requirement (400) and stale-revision (409) probes. An initial compatibility startup rejected copied uploads still pointing outside the new root; rebinding only the copied inventory paths corrected it. Its initial connection-refused browser navigation is not counted as a successful runtime check.
+
+SHA-256 checks after verification matched the normal-data baseline for both `library.json` (955,136 bytes) and `catalog-library.json` (82,421,656 bytes). The copied approval file had the same catalog hash. Owned service PIDs 42840 and 34160 served controlled data; compatibility PID 29348 exited on path validation, and corrected PID 40628 served the copy. All owned services were stopped and the owned browser session (CLI PID 41392) was closed. Port 3002 was free; normal port 3001 remained PID 44248.
+
+These are local workflow checks, not exporter-wide coverage, a memory benchmark or a long-session leak claim. No submitted-import cancellation delay was injected in this browser run; its late-persistence/navigation behavior remains covered by the Task 3 automated regression. Product identity, conflict batches and candidate pagination have automated coverage; the controlled browser run used generic definitions and two candidates.
 
 ## Current automated gates
 
-After the final coordinated review fixes, `npm test -- --maxWorkers=2` passed 179 tests in 12 files, in 15.54 seconds. `npm run build` passed strict TypeScript, server compilation and Vite production output. Existing Three CommonJS, Lucide module-directive and large lazy viewer/IFC chunk warnings remain. Current logs are `output/playwright/final-extension-tests.log` and `final-extension-build.log`; earlier Task 5 logs remain retained.
+After the creation retry fix, `npm test -- --maxWorkers=2` passed 234 tests in 17 files, in 19.49 seconds, exit 0. `npm run build` ran afterward and passed strict TypeScript, server compilation and Vite production output, exit 0. Existing Three CommonJS, Lucide module-directive, bundle-size and Vitest isolation notices remain baseline limitations. Current logs are `output/asset-creation-delivery/final-tests.log`, `final-build.log` and `final-gates.txt`; earlier delivery logs remain retained.
 
 The browser found and fixed three defects: BS19 installation/GUID properties appeared as reusable suggestions; side geometry reused the centered two-column layout and squeezed its canvas; side-inspector cleanup stole focus from the centered arrow opener. Domain and native-dialog focus regressions went RED then GREEN. Raw source observations remain intact, and the actual side/centered layouts were rechecked after the final build.
 
