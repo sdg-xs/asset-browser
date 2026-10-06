@@ -1,5 +1,7 @@
 # Project context
 
+The next proposed baseline is the [maintainable asset creation workflow](superpowers/specs/2026-10-06-asset-creation-workflow-design.md): Library is the front page and upload entry point; Generic Hard Asset supplies classification; staff finalize drafts in Needs review before approval. This design awaits written-spec review and is not yet implemented. [Domain vocabulary](../CONTEXT.md) defines asset as a maintainable building component and distinguishes reusable definitions from occurrences.
+
 The approved scope changed on 2026-10-06 from source-type browsing to a persistent staff-curated catalog. [Requirements](requirements-review.md) and the [curated design](superpowers/specs/2026-10-06-curated-asset-library-design.md) supersede the original source-GUID card/read-only curation assumptions. Read [verification](verification.md) for evidence and limits, and check current Git status/tests when resuming.
 
 ## Delivered behavior
