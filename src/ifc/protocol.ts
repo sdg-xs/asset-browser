@@ -10,6 +10,7 @@ import { librarySnapshotSchema } from "../../shared/catalog-library.js";
 import { CreationIndexSchema } from "../../shared/asset-creation.js";
 
 export const RequestSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("analyze-assets"), requestId: z.int(), modelId: ModelIdSchema }),
   z.object({ kind: z.literal("discover"), requestId: z.int(), modelId: ModelIdSchema }),
   z.object({
     kind: z.literal("analyze"),

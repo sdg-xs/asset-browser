@@ -4,19 +4,24 @@ import type {
   SourceTypeObservation,
   FieldMapping,
 } from "./catalog-library.js";
-import { reusableField } from "./catalog-observations.js";
-import { parameterSourceKeys } from "./catalog-observations.js";
+import { reusableField, parameterSourceKeys } from "./catalog-observations.js";
+import { sourceObservationKey } from "./catalog-source-identity.js";
 
 export function importSnapshot(
   state: CatalogLibrary,
   snapshot: LibrarySnapshot,
+  candidateKeys?: string[],
 ): boolean {
   let changed = false;
-  const observedIds = new Set(snapshot.types.map((type) => type.typeGlobalId));
+  const observedIds = new Set(snapshot.types.map(sourceObservationKey));
   for (const source of state.sources.filter(
     (source) => source.modelId === snapshot.modelId,
   )) {
-    if (source.current && !observedIds.has(source.observation.typeGlobalId)) {
+    if (
+      source.current &&
+      (snapshot.analysisVersion === 3 || source.observation.typeGlobalId !== null) &&
+      !observedIds.has(sourceObservationKey(source.observation))
+    ) {
       source.current = false;
       changed = true;
       flagReferences(state, source.id);
@@ -26,16 +31,15 @@ export function importSnapshot(
     let source = state.sources.find(
       (candidate) =>
         candidate.modelId === snapshot.modelId &&
-        candidate.observation.typeGlobalId === observation.typeGlobalId,
+        sourceObservationKey(candidate.observation) === sourceObservationKey(observation),
     );
-    if (
+    const unchanged =
       source?.fingerprint === snapshot.fingerprint &&
       source.current &&
-      source.analysisVersion === snapshot.analysisVersion
-    )
-      continue;
-    changed = true;
-    if (source) {
+      source.analysisVersion === snapshot.analysisVersion &&
+      JSON.stringify(source.observation) === JSON.stringify(observation);
+    if (source && !unchanged) {
+      changed = true;
       source.fingerprint = snapshot.fingerprint;
       source.sourceName = snapshot.sourceName;
       source.revision += 1;
@@ -43,7 +47,8 @@ export function importSnapshot(
       source.analysisVersion = snapshot.analysisVersion;
       source.current = true;
       flagReferences(state, source.id);
-    } else {
+    } else if (!source) {
+      changed = true;
       source = {
         analysisVersion: snapshot.analysisVersion,
         id: crypto.randomUUID(),
@@ -55,6 +60,14 @@ export function importSnapshot(
         observation,
       };
       state.sources.push(source);
+    }
+    if (
+      (!candidateKeys || candidateKeys.includes(sourceObservationKey(observation))) &&
+      !state.entries.some(entry =>
+        entry.sourceReferences.some(reference => reference.sourceId === source.id),
+      )
+    ) {
+      changed = true;
       const categoryId = seedCategories(state, observation);
       state.entries.push({
         id: crypto.randomUUID(),

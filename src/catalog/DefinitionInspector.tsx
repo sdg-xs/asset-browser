@@ -227,7 +227,7 @@ export function DefinitionInspector({
                 <p>
                   {source?.observation.name} · {source?.observation.ifcClass}
                 </p>
-                <p>Type: {source?.observation.typeGlobalId}</p>
+                <p>{source?.observation.typeGlobalId === null ? `Element: ${source.observation.elementGlobalId}` : `Type: ${source?.observation.typeGlobalId}`}</p>
                 <p>
                   Referenced revision: {r.fingerprint}. Current observations:{" "}
                   {source?.fingerprint}.

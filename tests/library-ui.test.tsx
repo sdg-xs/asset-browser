@@ -74,6 +74,7 @@ function setup(models: LibraryModel[] = [model]) {
     upload: vi.fn().mockResolvedValue(model),
   };
   const worker: LibraryWorker = {
+    discoverAssets: vi.fn(),
     openModel: vi.fn().mockResolvedValue(index),
     readProperties: vi.fn().mockResolvedValue([
       {

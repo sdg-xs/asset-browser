@@ -142,7 +142,7 @@ export function AssetInspector({
               <span>IFC</span>
             </div>
             <details className="property-group">
-              <summary>Type identity</summary>
+              <summary>{asset.typeGlobalId === null ? "Element identity" : "Type identity"}</summary>
               <dl>
                 <div>
                   <dt>IFC class</dt>
@@ -150,7 +150,7 @@ export function AssetInspector({
                 </div>
                 <div>
                   <dt>GlobalId</dt>
-                  <dd>{asset.typeGlobalId}</dd>
+                  <dd>{asset.typeGlobalId === null ? asset.elementGlobalId : asset.typeGlobalId}</dd>
                 </div>
               </dl>
             </details>

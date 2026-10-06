@@ -33,17 +33,20 @@ export const observedFieldSchema = z.object({
   ),
 });
 export type ObservedField = z.infer<typeof observedFieldSchema>;
-export const sourceTypeObservationSchema = z.object({
-  typeGlobalId: id,
+const observationProperties = {
   name: z.string(),
   ifcClass: z.string(),
   categories: z.array(z.string()),
   occurrenceIds,
   fields: z.array(observedFieldSchema),
-});
+};
+export const sourceTypeObservationSchema = z.union([
+  z.object({ typeGlobalId: id, ...observationProperties }),
+  z.object({ typeGlobalId: z.null(), elementGlobalId: id, ...observationProperties }),
+]);
 export type SourceTypeObservation = z.infer<typeof sourceTypeObservationSchema>;
 export const librarySnapshotSchema = z.object({
-  analysisVersion: z.literal(2).optional(),
+  analysisVersion: z.union([z.literal(2), z.literal(3)]).optional(),
   modelId: id,
   fingerprint: id,
   sourceName: z.string(),
@@ -96,7 +99,7 @@ export const sourceReferenceSchema = z.object({
 });
 export type SourceReference = z.infer<typeof sourceReferenceSchema>;
 export const sourceRecordSchema = z.object({
-  analysisVersion: z.literal(2).optional(),
+  analysisVersion: z.union([z.literal(2), z.literal(3)]).optional(),
   id,
   modelId: id,
   fingerprint: id,
@@ -139,6 +142,12 @@ export const sourceRebindingSchema = z.object({
 });
 export type SourceRebinding = z.infer<typeof sourceRebindingSchema>;
 export const libraryCommandSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("import-selected"),
+    expectedRevision,
+    snapshot: librarySnapshotSchema,
+    candidateKeys: z.array(id).min(1).refine(keys => new Set(keys).size === keys.length, "Candidate keys must be unique."),
+  }),
   z.object({
     kind: z.literal("exclude-source-parameters"),
     expectedRevision,

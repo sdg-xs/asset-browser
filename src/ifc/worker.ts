@@ -30,6 +30,7 @@ self.onmessage = async (event: MessageEvent<unknown>) => {
           value: reader.discoverAssets(message => send({ kind: "progress", requestId: request.requestId, message })) });
         return;
       case "analyze":
+      case "analyze-assets":
         if (openedModel !== request.modelId)
           throw new Error(
             "Open this source model before analyzing its assets.",
@@ -37,7 +38,7 @@ self.onmessage = async (event: MessageEvent<unknown>) => {
         send({
           kind: "analysis",
           requestId: request.requestId,
-          value: reader.librarySnapshot((message) =>
+          value: (request.kind === "analyze-assets" ? reader.analyzeAssets.bind(reader) : reader.librarySnapshot.bind(reader))((message) =>
             send({ kind: "progress", requestId: request.requestId, message }),
           ),
         });

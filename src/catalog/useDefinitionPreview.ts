@@ -4,7 +4,9 @@ import type {
   LibraryEntry,
   SourceReference,
 } from "../../shared/catalog-library.js";
-import type { LibraryModel } from "../../shared/contracts.js";
+import type { LibraryModel, PreviewAsset } from "../../shared/contracts.js";
+import type { CreationCandidate } from "../../shared/asset-creation.js";
+import { sourceObservationKey } from "../../shared/catalog-source-identity.js";
 import type { LibraryApi } from "../library/api.js";
 import type { Inspection, LibraryWorker } from "../library/useLibrary.js";
 export function geometrySource(
@@ -23,21 +25,46 @@ export function geometrySource(
     models.find(
       (m) =>
         m.id === source.modelId &&
-        m.fingerprint === reference.fingerprint &&
-        m.index?.fingerprint === reference.fingerprint,
+        m.fingerprint === reference.fingerprint,
     );
-  const asset = model?.index?.types.find(
-    (t) => t.typeGlobalId === source?.observation.typeGlobalId,
-  );
+  const asset = source?.analysisVersion === 3
+    ? model && model.creationIndex?.modelId === model.id && model.creationIndex.fingerprint === reference.fingerprint
+      ? previewCandidate(model.creationIndex.candidates.find(candidate => candidate.key === sourceObservationKey(source.observation)), model.id)
+      : undefined
+    : model?.index?.fingerprint === reference.fingerprint && source?.observation.typeGlobalId !== null
+      ? model.index.types.find(t => t.typeGlobalId === source?.observation.typeGlobalId)
+      : undefined;
   if (
     !source ||
     !model ||
     !asset ||
     !reference.occurrenceIds.length ||
-    !reference.occurrenceIds.every((id) => asset.occurrenceIds.includes(id))
+    !validMembership(source.observation.occurrenceIds, asset.occurrenceIds, reference.occurrenceIds)
   )
     return null;
   return { source, model, asset };
+}
+function previewCandidate(candidate: CreationCandidate | undefined, modelId: string): PreviewAsset | undefined {
+  if (!candidate) return undefined;
+  const common = {
+    id: candidate.key,
+    modelId,
+    name: candidate.name,
+    ifcClass: candidate.ifcClass,
+    categories: candidate.categories,
+    occurrenceIds: candidate.occurrenceIds,
+    representativeId: candidate.representativeId,
+  };
+  return candidate.identity.kind === "type"
+    ? { ...common, typeGlobalId: candidate.identity.globalId }
+    : { ...common, typeGlobalId: null, elementGlobalId: candidate.identity.globalId };
+}
+function validMembership(saved: number[], current: number[], subset: number[]): boolean {
+  return saved.length === current.length &&
+    saved.every(id => current.includes(id)) &&
+    subset.length > 0 &&
+    new Set(subset).size === subset.length &&
+    subset.every(id => current.includes(id));
 }
 export function useDefinitionPreview(
   state: CatalogLibrary,
@@ -68,10 +95,18 @@ export function useDefinitionPreview(
           const index = await worker.openModel({
             model: match.model,
             fileUrl: `/api/models/${match.model.id}/file`,
+            purpose: match.source.analysisVersion === 3 ? "creation" : "browse",
           });
           if (!active) return;
-          const asset =
-            index.fingerprint === reference.fingerprint
+          const creationIndex = match.source.analysisVersion === 3
+            ? await worker.discoverAssets({ modelId: match.model.id })
+            : null;
+          if (!active) return;
+          const asset = creationIndex
+            ? creationIndex.modelId === match.model.id && creationIndex.fingerprint === reference.fingerprint
+              ? previewCandidate(creationIndex.candidates.find(candidate => candidate.key === sourceObservationKey(match.source.observation)), match.model.id)
+              : undefined
+            : index.modelId === match.model.id && index.fingerprint === reference.fingerprint
               ? index.types.find(
                   (t) =>
                     t.typeGlobalId === match.source.observation.typeGlobalId,
@@ -79,9 +114,7 @@ export function useDefinitionPreview(
               : undefined;
           if (
             !asset ||
-            !reference.occurrenceIds.every((id) =>
-              asset.occurrenceIds.includes(id),
-            )
+            !validMembership(match.source.observation.occurrenceIds, asset.occurrenceIds, reference.occurrenceIds)
           ) {
             failure =
               "Source changed. Review and rebind its geometry before previewing.";

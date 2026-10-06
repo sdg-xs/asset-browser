@@ -24,6 +24,9 @@ function transport(response: unknown = index) {
       } else if (request.kind === "discover") {
         this.onmessage?.({ data: { kind: "progress", requestId: request.requestId, message: "Discovering" } });
         this.onmessage?.({ data: { kind: "creation-index", requestId: request.requestId, value: response } });
+      } else if (request.kind === "analyze-assets") {
+        this.onmessage?.({ data: { kind: "progress", requestId: request.requestId, message: "Analyzing" } });
+        this.onmessage?.({ data: { kind: "analysis", requestId: request.requestId, value: response } });
       }
     }
   }
@@ -31,6 +34,20 @@ function transport(response: unknown = index) {
   client = new IfcWorkerClient();
   return { client, openings };
 }
+
+const analysis = { analysisVersion: 3, modelId: model.id, fingerprint: model.fingerprint, sourceName: model.name, types: [{ typeGlobalId: null, elementGlobalId: "one", name: "One", ifcClass: "IFCPROXY", categories: [], occurrenceIds: [1], fields: [] }] };
+it("transports complete creation analysis without inventing a type identity", async () => {
+  const { client } = transport(analysis);
+  await client.openModel({ model, fileUrl: "/api/models/source/file", purpose: "creation" });
+  const messages: string[] = [];
+  expect(await client.analyzeAssets({ modelId: model.id, onProgress: message => messages.push(message) })).toEqual(analysis);
+  expect(messages).toEqual(["Analyzing"]);
+});
+it.each([{ ...analysis, modelId: "00000000-0000-4000-8000-000000000000" }, { ...analysis, fingerprint: "other" }, { ...analysis, analysisVersion: 2 }])("rejects mismatched or incomplete creation analysis", async response => {
+  const { client } = transport(response);
+  await client.openModel({ model, fileUrl: "/api/models/source/file", purpose: "creation" });
+  await expect(client.analyzeAssets({ modelId: model.id })).rejects.toThrow(/source|revision|model/i);
+});
 
 it("reopens when switching opening purpose and delivers discovery progress", async () => {
   const { client, openings } = transport();

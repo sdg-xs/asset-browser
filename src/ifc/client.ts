@@ -164,6 +164,18 @@ export class IfcWorkerClient {
       await this.request({ kind: "analyze", modelId }, onProgress),
     );
   }
+  async analyzeAssets({ modelId, onProgress = () => {} }: {
+    modelId: string;
+    onProgress?: Progress;
+  }): Promise<LibrarySnapshot> {
+    const opened = this.opened;
+    if (!opened || opened.modelId !== modelId)
+      throw new Error("Open this source model before analyzing its assets.");
+    const snapshot = librarySnapshotSchema.parse(await this.request({ kind: "analyze-assets", modelId }, onProgress));
+    if (snapshot.analysisVersion !== 3 || snapshot.modelId !== modelId || snapshot.fingerprint !== opened.fingerprint)
+      throw new Error("The creation analysis belongs to another source model or revision.");
+    return snapshot;
+  }
   async readGeometry({
     modelId,
     elementId,

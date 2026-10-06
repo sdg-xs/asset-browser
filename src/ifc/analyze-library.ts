@@ -6,6 +6,7 @@ import {
 } from "../../shared/catalog-library.js";
 import { equalNormalized } from "../../shared/catalog-normalization.js";
 import type { CatalogIndex } from "../../shared/contracts.js";
+import type { CreationIndex } from "../../shared/asset-creation.js";
 import type { Progress } from "./reader.js";
 
 export type PropertyObservation = Pick<
@@ -18,18 +19,28 @@ export function analyzeLibrary({
   properties,
   progress,
 }: {
-  index: CatalogIndex;
+  index: CatalogIndex | CreationIndex;
   sourceName: string;
   properties: (occurrenceId: number) => PropertyObservation[];
   progress: Progress;
 }): LibrarySnapshot {
   let count = 0;
-  const types = index.types.map((type) => {
+  const complete = "candidates" in index;
+  const candidates = "candidates" in index
+    ? index.candidates.map(candidate => ({
+        ...candidate,
+        ...(candidate.identity.kind === "type"
+          ? { typeGlobalId: candidate.identity.globalId }
+          : { typeGlobalId: null, elementGlobalId: candidate.identity.globalId }),
+      }))
+    : index.types;
+  const total = complete ? index.stats.elements : index.stats.classified;
+  const types = candidates.map((type) => {
     const fields = new Map<string, ObservedField>();
     for (const occurrenceId of type.occurrenceIds) {
       if (count % 250 === 0)
         progress(
-          `Analyzing ${count.toLocaleString()} / ${index.stats.classified.toLocaleString()} classified occurrences`,
+          `Analyzing ${count.toLocaleString()} / ${total.toLocaleString()} ${complete ? "physical" : "classified"} occurrences`,
         );
       count++;
       for (const observation of properties(occurrenceId)) {
@@ -68,6 +79,7 @@ export function analyzeLibrary({
     }
     return {
       typeGlobalId: type.typeGlobalId,
+      ...("elementGlobalId" in type ? { elementGlobalId: type.elementGlobalId } : {}),
       name: type.name,
       ifcClass: type.ifcClass,
       categories: [...type.categories],
@@ -75,9 +87,9 @@ export function analyzeLibrary({
       fields: [...fields.values()],
     };
   });
-  progress(`Analyzed ${count.toLocaleString()} classified occurrences`);
+  progress(`Analyzed ${count.toLocaleString()} ${complete ? "physical" : "classified"} occurrences`);
   return librarySnapshotSchema.parse({
-    analysisVersion: 2,
+    analysisVersion: complete ? 3 : 2,
     modelId: index.modelId,
     fingerprint: index.fingerprint,
     sourceName,

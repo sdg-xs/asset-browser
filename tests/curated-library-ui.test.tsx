@@ -467,6 +467,10 @@ function sourceModel(): LibraryModel {
 }
 function previewWorker(model: LibraryModel): LibraryWorker {
   return {
+    discoverAssets: vi.fn(async () => {
+      if (!model.creationIndex) throw Error("No creation index");
+      return model.creationIndex;
+    }),
     openModel: vi.fn(async () => {
       if (!model.index) throw new Error("No index");
       return model.index;

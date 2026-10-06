@@ -13,6 +13,8 @@ export const AssetTypeSchema = z.object({
   representativeId: z.int().positive(),
 });
 export type AssetType = z.infer<typeof AssetTypeSchema>;
+export const ElementAssetSchema = AssetTypeSchema.omit({ typeGlobalId: true }).extend({ typeGlobalId: z.null(), elementGlobalId: z.string().min(1) });
+export type PreviewAsset = AssetType | z.infer<typeof ElementAssetSchema>;
 
 export const CatalogIndexSchema = z.object({
   schemaVersion: z.literal(1),

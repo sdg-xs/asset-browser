@@ -293,7 +293,7 @@ export class LibraryStore {
     });
   }
   withCurrentModels<T>(
-    requirements: { modelId: string; fingerprint: string }[],
+    requirements: { modelId: string; fingerprint: string; indexPurpose?: "browse" | "creation" }[],
     operation: (models: LibraryModel[]) => Promise<T>,
   ): Promise<T> {
     return this.serialized(async () => {
@@ -312,10 +312,8 @@ export class LibraryStore {
               "The source file changed. Analyze its current revision again.",
               409,
             );
-          if (
-            !entry.model.index ||
-            entry.model.index.fingerprint !== requirement.fingerprint
-          )
+          const index = requirement.indexPurpose === "creation" ? entry.model.creationIndex : entry.model.index;
+          if (!index || index.fingerprint !== requirement.fingerprint)
             throw new LibraryError(
               "INDEX_REQUIRED",
               "Index the current source revision before importing or confirming source references.",

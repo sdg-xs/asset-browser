@@ -19,6 +19,7 @@ import type { LibraryModel } from "../shared/contracts.js";
 import { LibraryError, LibraryStore } from "./library-store.js";
 import { migrateCatalog } from "../shared/catalog-publication.js";
 import { changedReferences } from "../shared/catalog-references.js";
+import { sourceObservationKey } from "../shared/catalog-source-identity.js";
 
 function missingFile(error: unknown): boolean {
   return error instanceof Error && "code" in error && error.code === "ENOENT";
@@ -38,6 +39,33 @@ function validateSnapshot(
   snapshot: LibrarySnapshot,
   model: LibraryModel,
 ): void {
+  if (snapshot.analysisVersion === 3) {
+    const index = model.creationIndex;
+    if (
+      !index ||
+      index.modelId !== model.id ||
+      index.fingerprint !== model.fingerprint ||
+      snapshot.sourceName !== model.name ||
+      snapshot.types.length !== index.candidates.length
+    )
+      invalidSource("Import the complete analysis of the current creation index.");
+    for (const observation of snapshot.types) {
+      const candidate = index.candidates.find(
+        candidate => candidate.key === sourceObservationKey(observation),
+      );
+      if (
+        !candidate ||
+        candidate.name !== observation.name ||
+        candidate.ifcClass !== observation.ifcClass ||
+        !sameMembers(candidate.occurrenceIds, observation.occurrenceIds) ||
+        candidate.categories.length !== observation.categories.length ||
+        new Set(observation.categories).size !== observation.categories.length ||
+        !observation.categories.every(category => candidate.categories.includes(category))
+      )
+        invalidSource("Snapshot candidates, labels and occurrence memberships must match the current creation index.");
+    }
+    return;
+  }
   const index = model.index;
   if (!index) invalidSource("The source index is unavailable.");
   if (
@@ -78,20 +106,22 @@ function validateReferences(
       (source) => source.id === reference.sourceId,
     );
     const model = models.find((model) => model.id === source?.modelId);
-    const type = model?.index?.types.find(
-      (type) => type.typeGlobalId === source?.observation.typeGlobalId,
-    );
+    const candidate = source?.analysisVersion === 3
+      ? model?.creationIndex?.candidates.find(candidate => candidate.key === sourceObservationKey(source.observation))
+      : model?.index?.types.find(type => type.typeGlobalId === source?.observation.typeGlobalId);
     if (
       !source ||
       !source.current ||
       source.fingerprint !== reference.fingerprint ||
-      !type ||
-      type.modelId !== source.modelId ||
-      !sameMembers(source.observation.occurrenceIds, type.occurrenceIds) ||
-      reference.occurrenceIds.some((id) => !type.occurrenceIds.includes(id))
+      !candidate ||
+      model?.id !== source.modelId ||
+      model.fingerprint !== reference.fingerprint ||
+      (source.analysisVersion === 3 ? model.creationIndex?.fingerprint : model.index?.fingerprint) !== reference.fingerprint ||
+      !sameMembers(source.observation.occurrenceIds, candidate.occurrenceIds) ||
+      reference.occurrenceIds.some((id) => !candidate.occurrenceIds.includes(id))
     )
       invalidSource(
-        "Confirmed geometry references must identify current indexed type occurrences.",
+        "Confirmed geometry references must identify current indexed candidate occurrences.",
       );
   }
 }
@@ -147,12 +177,13 @@ export class CatalogLibraryStore {
         if (next !== this.state) await this.commit(next);
         return structuredClone(this.state);
       };
-      if (command.kind === "import") {
+      if (command.kind === "import" || command.kind === "import-selected") {
         return this.requireModels().withCurrentModels(
           [
             {
               modelId: command.snapshot.modelId,
               fingerprint: command.snapshot.fingerprint,
+              indexPurpose: command.snapshot.analysisVersion === 3 ? "creation" : "browse",
             },
           ],
           async (models) => {
@@ -180,7 +211,8 @@ export class CatalogLibraryStore {
           return {
             modelId: source.modelId,
             fingerprint: reference.fingerprint,
-          };
+            indexPurpose: source.analysisVersion === 3 ? "creation" : "browse",
+          } satisfies Parameters<LibraryStore["withCurrentModels"]>[0][number];
         });
         return this.requireModels().withCurrentModels(
           requirements,

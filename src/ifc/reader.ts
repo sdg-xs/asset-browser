@@ -308,11 +308,17 @@ export class IfcReader {
       );
   }
   librarySnapshot(progress: Progress = () => {}): LibrarySnapshot {
+    return this.analyze(this.analysis?.index, progress);
+  }
+  analyzeAssets(progress: Progress = () => {}): LibrarySnapshot {
+    return this.analyze(this.discoverAssets(progress), progress);
+  }
+  private analyze(index: CatalogIndex | CreationIndex | undefined, progress: Progress): LibrarySnapshot {
     const analysis = this.analysis;
-    if (!analysis)
+    if (!analysis || !index)
       throw new Error("Open an IFC model before library analysis.");
     return analyzeLibrary({
-      index: analysis.index,
+      index,
       sourceName: analysis.sourceName,
       progress,
       properties: (occurrenceId) => {

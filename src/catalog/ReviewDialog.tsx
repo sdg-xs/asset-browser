@@ -262,6 +262,9 @@ export function ReviewDialog({
           </label>
           <section className="suggestion">
             <strong>{preferredSource?.observation.name}</strong>
+            {preferredSource && <p>{preferredSource.observation.typeGlobalId === null
+              ? `Element: ${preferredSource.observation.elementGlobalId}`
+              : `Type: ${preferredSource.observation.typeGlobalId}`}</p>}
             <p>
               {preferredSource?.sourceName} ·{" "}
               {preferredSource?.observation.ifcClass}

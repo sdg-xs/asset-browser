@@ -13,6 +13,7 @@ import { sourceFor, parameterSourceKeys, entryFieldSuggestions } from "./catalog
 import { acceptPublication } from "./catalog-publication.js";
 import { changedReferences } from "./catalog-references.js";
 import { importSnapshot } from "./catalog-import.js";
+import { sourceObservationKey } from "./catalog-source-identity.js";
 import { splitEntry } from "./catalog-split.js";
 import { excludeSourceParameters } from "./catalog-exclusions.js";
 export { entryFieldSuggestions } from "./catalog-observations.js";
@@ -66,19 +67,24 @@ function validateReferences(
   }
 }
 function validateSnapshot(
-  command: Extract<LibraryCommand, { kind: "import" }>,
+  command: Extract<LibraryCommand, { kind: "import" | "import-selected" }>,
 ): void {
   const types = new Set<string>();
+  const occurrences = new Set<number>();
   for (const type of command.snapshot.types) {
     if (
-      types.has(type.typeGlobalId) ||
-      new Set(type.occurrenceIds).size !== type.occurrenceIds.length
+      types.has(sourceObservationKey(type)) ||
+      !type.occurrenceIds.length ||
+      new Set(type.occurrenceIds).size !== type.occurrenceIds.length ||
+      type.occurrenceIds.some(id => occurrences.has(id)) ||
+      (type.typeGlobalId === null && type.occurrenceIds.length !== 1)
     )
       throw new CatalogDomainError(
         "INVALID_COMMAND",
         "Snapshot contains repeated types or occurrences.",
       );
-    types.add(type.typeGlobalId);
+    types.add(sourceObservationKey(type));
+    for (const id of type.occurrenceIds) occurrences.add(id);
     const keys = new Set<string>();
     for (const field of type.fields) {
       if (keys.has(field.key))
@@ -99,6 +105,10 @@ function validateSnapshot(
         }
     }
   }
+  if (command.kind === "import-selected" && (command.snapshot.analysisVersion !== 3 || command.candidateKeys.some(key => !types.has(key))))
+    throw new CatalogDomainError("INVALID_COMMAND", "Select candidates from a complete creation analysis.");
+  if (command.kind === "import" && (command.snapshot.analysisVersion === 3 || command.snapshot.types.some(type => type.typeGlobalId === null)))
+    throw new CatalogDomainError("INVALID_COMMAND", "Creation candidates require a selective creation import.");
 }
 function updateCategory(
   state: CatalogLibrary,
@@ -198,8 +208,9 @@ export function applyLibraryCommand(
       excludeSourceParameters(next, command.names);
       break;
     case "import":
+    case "import-selected":
       validateSnapshot(command);
-      if (!importSnapshot(next, command.snapshot)) return state;
+      if (!importSnapshot(next, command.snapshot, command.kind === "import-selected" ? command.candidateKeys : undefined)) return state;
       break;
     case "edit": {
       const entry = requireEntry(next, command.entryId);
