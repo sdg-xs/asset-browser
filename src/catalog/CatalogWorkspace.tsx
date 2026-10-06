@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { loadAssetViewer } from "../viewer/load-viewer.js";
-import { Boxes, Grid2X2, List, Search } from "lucide-react";
+import { Boxes, FileUp, Grid2X2, List, Search } from "lucide-react";
+import { entryIssues } from "../../shared/catalog-rules.js";
+import { AssetCreationDialog } from "./AssetCreationDialog.js";
+import type { CreationWorker } from "./useAssetCreation.js";
 import { useSourceAvailability } from "./useSourceAvailability.js";
 import { IfcWorkerClient } from "../ifc/client.js";
 import { libraryApi, type LibraryApi } from "../library/api.js";
@@ -17,13 +20,14 @@ import { DefinitionInspector } from "./DefinitionInspector.js";
 import { EntryEditor } from "./EntryEditor.js";
 import { CategoryEditor } from "./CategoryEditor.js";
 import { ReviewDialog } from "./ReviewDialog.js";
-import { entrySpecifications, valueText } from "./display.js";
+import { entryFieldLabel, entrySpecifications, valueText } from "./display.js";
 const createDefaultWorker = () => new IfcWorkerClient();
 export interface CatalogWorkspaceProps {
   catalogApi?: CatalogApi;
   sourceApi?: LibraryApi;
   createWorker?: () => LibraryWorker;
   createAnalysisWorker?: () => AnalysisWorker;
+  createCreationWorker?: () => CreationWorker;
   loadViewer?: ViewerLoader;
 }
 export function CatalogWorkspace({
@@ -31,6 +35,7 @@ export function CatalogWorkspace({
   sourceApi = libraryApi,
   createWorker = createDefaultWorker,
   createAnalysisWorker = createDefaultWorker,
+  createCreationWorker = createDefaultWorker,
   loadViewer = loadAssetViewer,
 }: CatalogWorkspaceProps) {
   const catalog = useCatalogLibrary(catalogApi);
@@ -49,6 +54,10 @@ export function CatalogWorkspace({
       "edit" | "merge" | "split" | "geometry" | null
     >(null);
   const [page, setPage] = useState(0);
+  const [creating, setCreating] = useState(false);
+  const [creationNotice, setCreationNotice] = useState("");
+  const [batchNotice, setBatchNotice] = useState("");
+  const [skippedApprovals, setSkippedApprovals] = useState<string[]>([]);
   const { availability, retry: retryAvailability } = useSourceAvailability(
     sourceApi,
     workspace,
@@ -114,6 +123,36 @@ export function CatalogWorkspace({
     setChecked([]);
   }, [visibleIds, state?.revision, workspace]);
   const entry = state?.entries.find((e) => e.id === selected);
+  const approvalSelection = useMemo(() => {
+    const ids = new Set(checked);
+    const ready: string[] = [];
+    const skipped: string[] = [];
+    if (!state) return { ready, skipped };
+    for (const item of state.entries) {
+      if (!ids.has(item.id)) continue;
+      const issues = entryIssues(state, item);
+      if (issues.length) skipped.push(`${item.definition.name}: ${issues.map(issue =>
+        issue.startsWith("Unresolved source conflict: ")
+          ? `Resolve conflicting ${entryFieldLabel(state, item, issue.slice("Unresolved source conflict: ".length))} values.`
+          : issue,
+      ).join(" ")}`);
+      else ready.push(item.id);
+    }
+    return { ready, skipped };
+  }, [state, checked]);
+  const displayedSkipped = checked.length ? approvalSelection.skipped : skippedApprovals;
+  const approveSelected = async () => {
+    const selectedCount = checked.length;
+    setSkippedApprovals(approvalSelection.skipped);
+    if (!approvalSelection.ready.length) {
+      setBatchNotice(`None of the ${selectedCount} selected definitions are ready. Edit the drafts to resolve the issues below.`);
+      return;
+    }
+    setBatchNotice("");
+    const saved = await catalog.execute({ kind: "approve", entryIds: approvalSelection.ready });
+    if (saved) setBatchNotice(`Approved ${approvalSelection.ready.length} of ${selectedCount} selected definitions. ${approvalSelection.skipped.length} stayed in Needs review.`);
+    else setSkippedApprovals([]);
+  };
   const navigate = (value: Workspace) => {
     analysis.cancel();
     setWorkspace(value);
@@ -123,6 +162,8 @@ export function CatalogWorkspace({
     setSearch("");
     setSource("");
     setKind("");
+    setBatchNotice("");
+    setSkippedApprovals([]);
   };
   const inspect =
     entry && state ? (
@@ -138,6 +179,7 @@ export function CatalogWorkspace({
         error={catalog.error}
         onClose={() => setSelected("")}
         onEdit={() => setEditor("edit")}
+        onCategories={() => navigate("Categories")}
         onReview={setEditor}
         onAction={(action) =>
           void catalog
@@ -192,6 +234,7 @@ export function CatalogWorkspace({
           </div>
         )}
         {catalog.pending && <p role="status">Saving catalog…</p>}
+        {creationNotice && <p role="status" className="inline-message">{creationNotice}</p>}
         {!state && !catalog.error && <p role="status">Loading catalog…</p>}
         {workspace === "Sources" ? (
           <>
@@ -236,7 +279,16 @@ export function CatalogWorkspace({
                     : "Resolve specifications, compare variants and approve ready definitions."}
                 </p>
               </div>
-              <span className="count-token">{entries.length}</span>
+              <div className="catalog-title-actions">
+                <span className="count-token">{entries.length}</span>
+                {workspace === "Library" && <button
+                  className="primary"
+                  disabled={!state || catalog.pending}
+                  onClick={() => { setCreationNotice(""); setCreating(true); }}
+                >
+                  <FileUp size={18} aria-hidden="true" /> Upload IFC
+                </button>}
+              </div>
             </div>
             <div className="toolbar">
               <label className="search">
@@ -326,18 +378,18 @@ export function CatalogWorkspace({
                 </label>
                 <button
                   disabled={!checked.length || catalog.pending}
-                  onClick={() =>
-                    void catalog.execute({
-                      kind: archived ? "restore" : "approve",
-                      entryIds: checked,
-                    })
-                  }
+                  onClick={() => archived ? void catalog.execute({ kind: "restore", entryIds: checked }) : void approveSelected()}
                 >
                   {archived ? "Restore selected" : "Approve selected"} (
                   {checked.length})
                 </button>
+                {!archived && checked.length > 0 && <span role="status">{approvalSelection.ready.length} ready of {checked.length} selected; {approvalSelection.skipped.length} needs attention.</span>}
               </div>
             )}
+            {workspace === "Needs review" && !archived && <>
+              {batchNotice && <p role={batchNotice.startsWith("None") ? "alert" : "status"} className="inline-message">{batchNotice}</p>}
+              {displayedSkipped.length > 0 && <div className="batch-skipped"><p>These definitions need attention before approval:</p><ul>{displayedSkipped.map((reason, index) => <li key={`${index}:${reason}`}>{reason}</li>)}</ul></div>}
+            </>}
             {state && entries.length > 0 && (
               <nav className="catalog-pagination" aria-label="Definition pages">
                 <span role="status">
@@ -392,15 +444,15 @@ export function CatalogWorkspace({
                     : "No matching definitions"}
                 </h2>
                 <p>
-                  Analyze an IFC source to create drafts, then review and
-                  approve reusable definitions.
+                  Upload an IFC file, choose reusable assets, then review and approve the drafts.
                 </p>
                 <div className="action-row">
                   <button
                     className="primary"
-                    onClick={() => navigate("Sources")}
+                    disabled={catalog.pending}
+                    onClick={() => { setCreationNotice(""); setCreating(true); }}
                   >
-                    Go to Sources
+                    Upload IFC
                   </button>
                   <button onClick={() => navigate("Needs review")}>
                     Review drafts
@@ -411,6 +463,22 @@ export function CatalogWorkspace({
           </>
         )}
       </main>
+      {creating && state && <AssetCreationDialog
+        sourceApi={sourceApi}
+        revision={state.revision}
+        execute={catalog.execute}
+        createWorker={createCreationWorker}
+        onClose={submitted => {
+          setCreating(false);
+          if (submitted) setCreationNotice("Draft creation was submitted and may still finish. Check Needs review for the saved drafts.");
+        }}
+        onSuccess={() => {
+          setCreating(false);
+          navigate("Needs review");
+          setArchived(false);
+          setCreationNotice("Selected drafts saved. Review their name, classification and specifications before approval.");
+        }}
+      />}
       {!modal && inspect}
       {modal && entry && (
         <Dialog
@@ -430,6 +498,7 @@ export function CatalogWorkspace({
           pending={catalog.pending}
           onSave={catalog.execute}
           onClose={() => setEditor(null)}
+          onCategories={() => { setEditor(null); navigate("Categories"); }}
         />
       )}{" "}
       {entry && state && editor && editor !== "edit" && (

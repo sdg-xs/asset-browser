@@ -58,7 +58,9 @@ export function CatalogSidebar({
       <p className="sidebar-footnote">
         Staff-curated definitions.
         <br />
-        Original IFC sources retained.
+        Upload IFC in Library to create assets.
+        <br />
+        Sources contains advanced source tools.
       </p>
     </aside>
   );

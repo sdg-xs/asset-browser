@@ -33,6 +33,7 @@ export function DefinitionInspector({
   onEdit,
   onReview,
   onAction,
+  onCategories,
   modal = false,
   reviewMode = false,
 }: {
@@ -47,6 +48,7 @@ export function DefinitionInspector({
   onEdit(): void;
   onReview(mode: "merge" | "split" | "geometry"): void;
   onAction(kind: "approve" | "archive" | "restore"): void;
+  onCategories(): void;
   modal?: boolean;
   reviewMode?: boolean;
 }) {
@@ -100,6 +102,8 @@ export function DefinitionInspector({
         </span>
         <h2>{entry.definition.name}</h2>
         <p>{entry.definition.description}</p>
+        {reviewMode && <p className="review-focus">Review the name, Generic Hard Asset classification, preview and {entry.definition.kind === "product" ? "confirmed product identity" : "generic specifications"}.</p>}
+        {reviewMode && !state.categories.some(c => c.id === entry.definition.categoryId) && <div className="review-issues"><p>Choose a canonical category in Edit definition. If it is missing, add it in Categories.</p><button onClick={onCategories}>Go to Categories</button></div>}
         {reviewMode && entry.reviewFlags.length > 0 && (
           <p className="review-issues">
             Source changed. Published specifications are retained. Review its

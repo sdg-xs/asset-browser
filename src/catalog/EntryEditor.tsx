@@ -16,6 +16,7 @@ export function EntryEditor({
   onSave,
   onClose,
   error,
+  onCategories,
 }: {
   state: CatalogLibrary;
   entry: LibraryEntry;
@@ -23,6 +24,7 @@ export function EntryEditor({
   error: string;
   onSave(action: CatalogAction): Promise<boolean>;
   onClose(): void;
+  onCategories(): void;
 }) {
   const [definition, setDefinition] = useState<EditableDefinition>(() =>
     structuredClone(entry.definition),
@@ -85,6 +87,8 @@ export function EntryEditor({
             <label>
               Category
               <select
+                aria-label="Category"
+                aria-describedby="category-classification-help"
                 value={definition.categoryId ?? ""}
                 onChange={(e) => update({ categoryId: e.target.value || null })}
               >
@@ -95,7 +99,13 @@ export function EntryEditor({
                   </option>
                 ))}
               </select>
+              <small id="category-classification-help">Canonical Generic Hard Asset classification</small>
             </label>
+          </div>
+          <p>Missing a category? <button type="button" onClick={onCategories}>Go to Categories</button> to add the canonical category, then return to this draft. Save your changes before leaving.</p>
+          <details className="definition-additional-details">
+            <summary>Additional definition details</summary>
+            <div className="form-grid">
             <label>
               Family
               <input
@@ -122,7 +132,8 @@ export function EntryEditor({
               />
             </label>
           </div>
-          {(["manufacturer", "model"] as const).map((key) => (
+          </details>
+          {definition.kind === "product" && (["manufacturer", "model"] as const).map((key) => (
             <fieldset key={key}>
               <legend>
                 {key === "manufacturer" ? "Manufacturer" : "Model"}
@@ -238,7 +249,8 @@ export function EntryEditor({
             </section>
           ))}
           <details>
-            <summary>Unconfirmed product hints from source</summary>
+            <summary>Source details</summary>
+            <h4>Unconfirmed product hints</h4>
             <p>These remain suggestions until entered and confirmed above.</p>
             {state.sources
               .filter((s) =>
