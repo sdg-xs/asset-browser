@@ -68,7 +68,8 @@ Typed and element identities are different domain cases. Never encode an element
 ### Task 2: Import only selected candidates and support element sources
 
 **Files:**
-- Modify: `shared/catalog-library.ts`, `shared/catalog-import.ts`, `shared/catalog-rules.ts`, `shared/catalog-references.ts`, `server/catalog-library-store.ts`, `src/ifc/analyze-library.ts`, worker protocol/client/reader, `src/catalog/useDefinitionPreview.ts`, `src/catalog/ReviewDialog.tsx`, `src/catalog/DefinitionInspector.tsx`, `src/library/useLibrary.ts`, `src/components/AssetInspector.tsx`.
+- Modify: `shared/catalog-library.ts`, `shared/catalog-import.ts`, `shared/catalog-rules.ts`, `server/catalog-library-store.ts`, `src/ifc/analyze-library.ts`, worker protocol/client/reader, `src/catalog/useDefinitionPreview.ts`, `src/catalog/ReviewDialog.tsx`, `src/catalog/DefinitionInspector.tsx`, `src/library/useLibrary.ts`, `src/components/AssetInspector.tsx`.
+- Inspect only: `shared/catalog-references.ts`; its source UUID/fingerprint keys and occurrence memberships already support both typed and element observations.
 - Create: `shared/catalog-source-identity.ts`, `tests/asset-creation-import.test.ts` and focused preview/API regressions.
 
 **Interfaces:**
