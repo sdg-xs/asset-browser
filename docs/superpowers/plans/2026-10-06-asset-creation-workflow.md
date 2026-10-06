@@ -52,10 +52,11 @@ Typed and element identities are different domain cases. Never encode an element
 **Interfaces:**
 - Produces `CreationIdentity = { kind: "type"; globalId: string } | { kind: "element"; globalId: string }`, schema-derived.
 - Produces `creationCandidateKey(identity: CreationIdentity): string`, with stable keys `type:<globalId>` and `element:<globalId>`.
-- Produces schema-derived `CreationCandidate` with `key`, `identity`, `name`, `ifcClass`, `categories: string[]`, `occurrenceIds: number[]`, and `representativeId: number`.
+- Produces schema-derived `CreationCandidate` with `key`, `identity`, `name`, `ifcClass`, `categories: string[]`, `classificationIssues: string[]`, `occurrenceIds: number[]`, and `representativeId: number`.
 - Produces schema-derived `CreationIndex` with `modelId`, `fingerprint`, `candidates`, and counts of physical elements, candidates, classified candidates, unclassified candidates and untyped candidates. Counts distinguish candidates from occurrences.
 - Adds optional `creationIndex: CreationIndex` to `LibraryModel`; absence means a legacy source not yet analyzed for creation.
 - Adds `IfcReader.discoverAssets(progress?: Progress): CreationIndex` after `open`, and `IfcWorkerClient.discoverAssets({ modelId, onProgress? }): Promise<CreationIndex>`.
+- Add optional `purpose: "browse" | "creation"` to worker `openModel` requests, defaulting to browse. Reader opening accepts the same optional purpose without changing existing argument positions. Creation purpose retains ambiguous classifications as candidate issues instead of failing before discovery; browse behavior stays compatible. The creation dialog and creation-reference previews explicitly request creation purpose.
 - Adds required `LibraryApi.saveCreationIndex(index: CreationIndex): Promise<CreationIndex>` and `PUT /api/models/:id/creation-index`, guarded by current fingerprint and serialized inventory writes.
 
 - [ ] **Step 1: Write failing behavioral tests.** Real-parser discovery must include a classified typed component, a blank-classification typed component and an untyped component, with different type/element identities. Two occurrences of one real IFC type form one candidate. Instance blank overrides type classification. IFC spaces/project/spatial containers are not candidates. Malformed files fail without retained reader state. Posting a stale, duplicate-key or invalid-member creation index rejects without changing inventory.
