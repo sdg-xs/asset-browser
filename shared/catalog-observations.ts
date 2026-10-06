@@ -15,6 +15,9 @@ export function reusableField(field: ObservedField): boolean {
     );
   return (
     !spatialLevel &&
+    !/^(?:product\s*(?:code|id|number)|sku|(?:manufacturer\s*)?(?:art\.?\s*no\.?|article\s*(?:number|no\.?)|part\s*(?:number|no\.?)))$/i.test(
+      field.name.trim(),
+    ) &&
     !/(?:globalid|expressid|asset.?id|room|offset|placement|installation|manufacturer|model(?:number)?|generic hard asset)/i.test(
       field.name,
     )

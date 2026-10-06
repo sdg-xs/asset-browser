@@ -69,6 +69,50 @@ const edit = (state: CatalogLibrary, def = definition(first(state))) =>
     definition: def,
   });
 describe("catalog domain", () => {
+  it("retains product codes as source evidence without suggesting identity as specifications", () => {
+    const snap = snapshot();
+    const type = snap.types[0];
+    if (!type) throw Error("Missing type");
+    const names = [
+      "Product code",
+      "SKU",
+      "Manufacturer Art. No.",
+      "Code compliance rating",
+    ];
+    type.fields.push(
+      ...names.map((name) => ({
+        key: `Product/${name}`,
+        pset: "Product",
+        name,
+        measure: "IFCLABEL",
+        unit: null,
+        values: [
+          {
+            rawValue: "Known",
+            normalized: {
+              kind: "text",
+              value: "Known",
+              unit: null,
+            } satisfies ReturnType<typeof normalizeObservation>,
+            occurrenceIds: [1, 2],
+          },
+        ],
+      })),
+    );
+    const state = imported(snap);
+    expect(
+      state.sources[0]?.observation.fields.map((field) => field.name),
+    ).toEqual(["Width", ...names]);
+    const suggestions = state.templates.flatMap((template) =>
+      template.suggestions.map((field) => field.label),
+    );
+    expect(suggestions).toContain("Code compliance rating");
+    for (const name of names.slice(0, 3))
+      expect(suggestions).not.toContain(name);
+    expect(
+      entryFieldSuggestions(state, first(state)).map((field) => field.key),
+    ).not.toContain("Product/Product code");
+  });
   it("normalizes equivalent units, blank versus zero and unsupported units", () => {
     expect(n("1000")).toEqual(n("1", "m"));
     expect(n("")).toEqual({ kind: "missing" });
