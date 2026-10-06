@@ -35,6 +35,10 @@ function sameMembers(left: number[], right: number[]): boolean {
     left.every((id) => rightMembers.has(id))
   );
 }
+function sameIssues(left: string[], right: string[]): boolean {
+  return left.length === right.length && new Set(right).size === right.length &&
+    left.every(issue => right.includes(issue));
+}
 function validateSnapshot(
   snapshot: LibrarySnapshot,
   model: LibraryModel,
@@ -59,6 +63,7 @@ function validateSnapshot(
         candidate.ifcClass !== observation.ifcClass ||
         !sameMembers(candidate.occurrenceIds, observation.occurrenceIds) ||
         candidate.categories.length !== observation.categories.length ||
+        !sameIssues(candidate.classificationIssues, observation.classificationIssues ?? []) ||
         new Set(observation.categories).size !== observation.categories.length ||
         !observation.categories.every(category => candidate.categories.includes(category))
       )

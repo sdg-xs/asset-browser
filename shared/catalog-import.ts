@@ -155,5 +155,6 @@ function seedCategories(
       template.suggestions.push(mapping);
     }
   }
-  return categoryIds.length === 1 ? (categoryIds[0] ?? null) : null;
+  return !observation.classificationIssues?.length && categoryIds.length === 1
+    ? (categoryIds[0] ?? null) : null;
 }

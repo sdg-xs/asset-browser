@@ -37,6 +37,7 @@ const observationProperties = {
   name: z.string(),
   ifcClass: z.string(),
   categories: z.array(z.string()),
+  classificationIssues: z.array(z.string().min(1)).optional(),
   occurrenceIds,
   fields: z.array(observedFieldSchema),
 };

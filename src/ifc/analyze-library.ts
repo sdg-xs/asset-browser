@@ -83,6 +83,8 @@ export function analyzeLibrary({
       name: type.name,
       ifcClass: type.ifcClass,
       categories: [...type.categories],
+      ...("classificationIssues" in type && type.classificationIssues.length
+        ? { classificationIssues: [...type.classificationIssues] } : {}),
       occurrenceIds: [...type.occurrenceIds],
       fields: [...fields.values()],
     };

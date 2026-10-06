@@ -327,11 +327,14 @@ export class IfcReader {
         const instance = this.observations(
           this.occurrenceSets.get(occurrenceId) ?? [],
           analysis.units,
+          new Set(),
+          "candidates" in index,
         );
         const fallback = this.observations(
           type?.HasPropertySets?.map((ref) => ref.value) ?? [],
           analysis.units,
           new Set(instance.map((field) => field.key)),
+          "candidates" in index,
         );
         return [...fallback, ...instance];
       },
@@ -341,8 +344,9 @@ export class IfcReader {
     setIds: number[],
     units: AnalysisUnits,
     overridden = new Set<string>(),
+    creation = false,
   ): PropertyObservation[] {
-    const fields = new Map<string, PropertyObservation>();
+    const fields = new Map<string, PropertyObservation[]>();
     for (const setId of new Set(setIds)) {
       let cached = this.propertySets.get(setId);
       if (!cached) {
@@ -403,19 +407,23 @@ export class IfcReader {
       }
       for (const field of cached) {
         if (overridden.has(field.key)) continue;
-        const existing = fields.get(field.key);
-        if (
-          existing &&
-          (existing.rawValue !== field.rawValue ||
-            !equalNormalized(existing.normalized, field.normalized))
-        )
-          throw new Error(
-            `Conflicting properties for ${field.pset} / ${field.name} in one occurrence.`,
-          );
-        fields.set(field.key, field);
+        const existing = fields.get(field.key) ?? [];
+        const previous = existing[0];
+        if (!creation || field.pset !== "Identity Data" || field.name !== "Generic Hard Asset") {
+          if (previous && (previous.rawValue !== field.rawValue ||
+              !equalNormalized(previous.normalized, field.normalized)))
+            throw new Error(`Conflicting properties for ${field.pset} / ${field.name} in one occurrence.`);
+          fields.set(field.key, [field]);
+          continue;
+        }
+        if (existing.some(value => value.rawValue === field.rawValue &&
+            value.measure === field.measure && value.unit === field.unit &&
+            equalNormalized(value.normalized, field.normalized))) continue;
+        existing.push(field);
+        fields.set(field.key, existing);
       }
     }
-    return [...fields.values()];
+    return [...fields.values()].flat();
   }
   properties(elementId: number): PropertyGroup[] {
     this.assertElement(elementId);

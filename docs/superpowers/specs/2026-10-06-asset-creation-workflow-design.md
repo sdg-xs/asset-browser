@@ -1,6 +1,6 @@
 # Maintainable asset creation workflow
 
-Status: implemented and verified on 2026-10-06. Library upload, explicit subset import, classification/review and approval were exercised in production Chrome with controlled real IFC fixtures. Existing approved BS19/JV3 geometry was checked separately against an unchanged copied catalog. [Verification](../../verification.md) records actual results and limits.
+Status: implemented and verified on 2026-10-06. Library upload, explicit subset import, classification/review and approval were exercised in production Chrome with controlled real IFC fixtures. Actual parser regressions also cover type, instance and blank/text classification conflicts through staff correction and explicit approval. A complete BS19 one-selected command passed isolated HTTP import with every observation retained. Existing approved BS19/JV3 geometry was checked separately against an unchanged copied catalog. [Verification](../../verification.md) records actual results and limits.
 
 ## Purpose and boundaries
 

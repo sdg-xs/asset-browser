@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { FileUp } from "lucide-react";
 import { Dialog } from "../components/Dialog.js";
 import { useAssetCreation, type AssetCreationOptions } from "./useAssetCreation.js";
@@ -11,6 +11,10 @@ export function AssetCreationDialog({
   const { stage } = creation;
   const [file, setFile] = useState<File | null>(null);
   const [page, setPage] = useState(0);
+  const index = stage.kind === "selection" ? stage.index : null;
+  const classificationWorkload = useMemo(() => index?.candidates.filter(candidate =>
+    !candidate.categories.length || candidate.categories.length > 1 || candidate.classificationIssues.length > 0,
+  ).length ?? 0, [index]);
   const close = () => {
     creation.cancel();
     onClose(stage.kind === "importing");
@@ -57,6 +61,7 @@ export function AssetCreationDialog({
         <span className="count-token">{stage.index.candidates.length}</span>
       </div>
       <p>Classified assets are selected for review. Unclassified objects and context require your choice. Each card is one reusable asset type or specification variant.</p>
+      <p>{stage.index.stats.elements.toLocaleString()} physical occurrences · {(stage.index.stats.elements - stage.index.stats.candidates).toLocaleString()} repeated occurrences · {classificationWorkload.toLocaleString()} {classificationWorkload === 1 ? "candidate needs" : "candidates need"} classification</p>
       <div className="creation-selection-summary">
         <strong role="status">{stage.selected.size} selected of {stage.index.candidates.length} candidates</strong>
         <button onClick={creation.clearSelection}>Clear selection</button>

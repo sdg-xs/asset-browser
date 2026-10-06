@@ -28,7 +28,7 @@ Task 5 used an isolated production service on port 3002 with a copied source ind
 
 ## Limits and navigation
 
-Snapshots were about 20.0 MB for BS19 and 9.3 MB for JV3; combined pretty JSON was about 72 MB. Full-state APIs cost time and memory. Review rendering is paged at 50 definitions; selection applies to the visible page, and derived observations are cached. No HG62, exporter-wide, guaranteed memory-peak or long-session leak claim is made. Source fingerprints use size/mtime. Unsupported units never acquire guessed normalization.
+Earlier classified Sources snapshots were about 20.0 MB for BS19 and 9.3 MB for JV3; combined pretty JSON was about 72 MB. Complete BS19 creation commands include previously excluded/untyped observations. A one-selected command measured 35,905,423 UTF-8 bytes and passed isolated HTTP import with all 3,083 observations and 9,204 memberships. Catalog commands have a bounded 64 MiB budget; other JSON API routes retain 32 MiB. Full-state APIs cost time and memory. Review rendering is paged at 50 definitions; selection applies to the visible page, and derived observations are cached. No HG62, exporter-wide, guaranteed memory-peak or long-session leak claim is made. Source fingerprints use size/mtime. Unsupported units never acquire guessed normalization.
 
 The ignored `graphify-out/` graph in the normal checkout is navigation assistance. The controller refreshes it after integrating source/docs changes, using the corrected local dispatch. No duplicate worktree graph was generated. Verify graph findings against cited files; planned requirements are not implementation evidence.
 

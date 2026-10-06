@@ -36,6 +36,19 @@ function chooseFile(name = "Furniture.ifc") {
   fireEvent.click(screen.getByRole("button", { name: "Analyze IFC" }));
 }
 describe("guided asset creation", () => {
+  it("summarizes physical occurrences separately from candidates and includes conflicting classification workload", async () => {
+    const f = fixture(3);
+    const candidate = f.index.candidates[0];
+    if (!candidate) throw Error("Missing candidate");
+    candidate.occurrenceIds = [1, 4, 5];
+    candidate.classificationIssues = ["Conflicting Generic Hard Asset values"];
+    f.index.stats.elements = 5;
+    render(<AssetCreationDialog sourceApi={f.api} revision={0} execute={vi.fn(async () => true)} createWorker={() => f.worker} onClose={vi.fn()} onSuccess={vi.fn()} />);
+    chooseFile(); await screen.findByRole("checkbox", { name: "Select Asset 1" });
+    expect(screen.getByText("5 physical occurrences · 2 repeated occurrences · 2 candidates need classification")).toBeTruthy();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select Asset 2" }));
+    expect(screen.getByText("5 physical occurrences · 2 repeated occurrences · 2 candidates need classification")).toBeTruthy();
+  });
   it("requires a fresh file after choosing another IFC", async () => {
     const f = fixture(1);
     render(<AssetCreationDialog sourceApi={f.api} revision={0} execute={vi.fn(async () => true)} createWorker={() => f.worker} onClose={vi.fn()} onSuccess={vi.fn()} />);
@@ -68,6 +81,7 @@ describe("guided asset creation", () => {
     const first = await screen.findByRole("checkbox", { name: "Select Asset 1" });
     expect(first).toHaveProperty("checked", true);
     expect(screen.getByRole("checkbox", { name: "Select Asset 2" })).toHaveProperty("checked", false);
+    expect(screen.getByText("2 physical occurrences · 0 repeated occurrences · 1 candidate needs classification")).toBeTruthy();
     expect(execute).not.toHaveBeenCalled(); expect(success).not.toHaveBeenCalled();
     expect(f.worker.openModel).toHaveBeenCalledWith(expect.objectContaining({ purpose: "creation" }));
     expect(f.api.saveCreationIndex).toHaveBeenCalledWith(f.index);

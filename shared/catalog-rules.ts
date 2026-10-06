@@ -14,6 +14,7 @@ import { acceptPublication } from "./catalog-publication.js";
 import { changedReferences } from "./catalog-references.js";
 import { importSnapshot } from "./catalog-import.js";
 import { sourceObservationKey } from "./catalog-source-identity.js";
+import { equalNormalized } from "./catalog-normalization.js";
 import { splitEntry } from "./catalog-split.js";
 import { excludeSourceParameters } from "./catalog-exclusions.js";
 export { entryFieldSuggestions } from "./catalog-observations.js";
@@ -94,15 +95,25 @@ function validateSnapshot(
         );
       keys.add(field.key);
       const membership = new Set<number>();
-      for (const value of field.values)
+      const ambiguousClassification = command.snapshot.analysisVersion === 3 &&
+        !!type.classificationIssues?.length && field.pset === "Identity Data" &&
+        field.name === "Generic Hard Asset" &&
+        field.key === JSON.stringify(["Identity Data", "Generic Hard Asset"]);
+      for (const [position, value] of field.values.entries()) {
+        if (new Set(value.occurrenceIds).size !== value.occurrenceIds.length ||
+            (ambiguousClassification && field.values.slice(0, position).some(previous =>
+              previous.rawValue === value.rawValue && previous.sourceUnit === value.sourceUnit &&
+              previous.sourceMeasure === value.sourceMeasure && equalNormalized(previous.normalized, value.normalized))))
+          throw new CatalogDomainError("INVALID_COMMAND", "Snapshot field values or occurrence membership are repeated.");
         for (const id of value.occurrenceIds) {
-          if (!type.occurrenceIds.includes(id) || membership.has(id))
+          if (!type.occurrenceIds.includes(id) || (membership.has(id) && !ambiguousClassification))
             throw new CatalogDomainError(
               "INVALID_COMMAND",
               "Snapshot field occurrence membership is invalid or repeated.",
             );
           membership.add(id);
         }
+      }
     }
   }
   if (command.kind === "import-selected" && (command.snapshot.analysisVersion !== 3 || command.candidateKeys.some(key => !types.has(key))))

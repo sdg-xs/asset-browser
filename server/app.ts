@@ -71,6 +71,7 @@ export async function createApp(
   const app = express();
   app.disable("x-powered-by");
   app.use(localRequests);
+  app.post("/api/catalog-library/commands", express.json({ limit: "64mb" }));
   app.use("/api", express.json({ limit: "32mb" }));
   const upload = multer({
     storage: multer.diskStorage({
@@ -152,7 +153,7 @@ export async function createApp(
   });
   const errors: ErrorRequestHandler = (
     error: unknown,
-    _request,
+    request,
     response,
     next,
   ) => {
@@ -167,7 +168,7 @@ export async function createApp(
     } else if (z.object({ type: z.literal("entity.too.large") }).safeParse(error).success) {
       response.status(413).json({ error: {
         code: "REQUEST_TOO_LARGE",
-        message: "The JSON request exceeds the 32 MiB limit.",
+        message: `The JSON request exceeds the ${request.method === "POST" && request.path === "/api/catalog-library/commands" ? 64 : 32} MiB limit.`,
       } });
     } else if (error instanceof ZodError || error instanceof SyntaxError) {
       response
