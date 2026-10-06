@@ -2,6 +2,16 @@
 
 Measured locally on 2026-10-05 using Chrome through Playwright CLI, Node 24.19.0 and the lockfile-pinned npm packages. The production catalog is `/`. Task 2's temporary `/validation.html` entry has been removed; its historical measurements below remain applicable to the parser/viewer revision tested at that time.
 
+## Context refresh on 2026-10-06
+
+The full `npm test` suite passed 55 tests across seven files against application revision `8f2cd6f`. This includes the centered-preview regression previously checked only in the focused run. The known Three CommonJS deprecation warning remains. This context and documentation refresh does not add a new browser run or change application behavior.
+
+## JV3 library indexing on 2026-10-06
+
+Selected the existing `JV3.ifc` source through the production UI at `http://127.0.0.1:3001`. Its 77,787,993-byte source produced a persisted catalog with 551 types and 81 categories. The 2,838 physical elements comprise 1,887 classified occurrences, 923 excluded occurrences and 28 untyped occurrences.
+
+`Central-Fire-Alarm:Standard`, representative occurrence 147170, rendered two meshes and 24 triangles. Its instance `Identity Data / Generic Hard Asset` value is `Fire Alarm Central`. Normal card selection opened the side inspector; the arrow opened the centered preview with the same geometry, 17 property panels and one selected card. Chrome console reported zero errors or warnings. The side-inspector screenshot was visually inspected. Local evidence is `output/playwright/jv3-inspector.png`, `jv3-centered-preview.png` and `jv3-inspector-snapshot.txt`. The original IFC remains in its source folder; this operation saved the derived catalog in managed local state and required no application code change.
+
 ## Final revision and inventory fixes
 
 The final checks pass 54 tests across seven files, strict TypeScript, and the production build. The focused API/UI run passes 37 tests. Six regression cases initially failed on the prior implementation: revision-bound downloads, oversized JSON, download and index-save conflicts during cached inspection, startup inventory after upload, and mobile category focus. Further tests cover a real temporary IFC replacement through the API, worker download function and web-ifc reader; late inventory after hiding a model; and preservation of a catalog completed during inventory refresh.
