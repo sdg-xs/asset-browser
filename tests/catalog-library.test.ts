@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { normalizeObservation } from "../shared/catalog-normalization.js";
+import { libraryCommandSchema } from "../shared/catalog-library.js";
 import {
   applyLibraryCommand,
   emptyCatalogLibrary,
@@ -69,6 +70,81 @@ const edit = (state: CatalogLibrary, def = definition(first(state))) =>
     definition: def,
   });
 describe("catalog domain", () => {
+  it("excludes selected source parameters from suggestions and approved definitions while preserving IFC evidence", () => {
+    let state = edit(imported());
+    state = applyLibraryCommand(state, {
+      kind: "approve", expectedRevision: state.revision, entryIds: [first(state).id],
+    });
+    const category = state.categories[0];
+    if (!category) throw Error("Missing category");
+    state = applyLibraryCommand(state, {
+      kind: "template", expectedRevision: state.revision, categoryId: category.id,
+      mappings: [{ key: "width", sourceKeys: ["Dimensions/Width"], label: "Cabinet width", dataKind: "number", canonicalUnit: "m", role: "specification" }],
+    });
+    const sources = structuredClone(state.sources);
+    state = applyLibraryCommand(state, libraryCommandSchema.parse({
+      kind: "exclude-source-parameters", expectedRevision: state.revision, names: ["Width"],
+    }));
+    expect(first(state).status).toBe("approved");
+    expect(first(state).definition.specifications).toEqual({});
+    expect(first(state).publication?.specifications).toEqual({});
+    expect(first(state).publication?.labels).toEqual({});
+    expect(entryFieldSuggestions(state, first(state))).toEqual([]);
+    expect(state.templates[0]?.suggestions).toEqual([]);
+    expect(state.templates[0]?.mappings).toEqual([]);
+    expect(state.sources).toEqual(sources);
+    state = applyLibraryCommand(state, {
+      kind: "import", expectedRevision: state.revision, snapshot: snapshot(["900", "900"], "two"),
+    });
+    expect(state.templates[0]?.suggestions).toEqual([]);
+    expect(entryFieldSuggestions(state, first(state))).toEqual([]);
+  });
+  it("resolves conflicts as unknown only when explicitly requested during approval", () => {
+    const state = imported(snapshot(["600", "800"]));
+    const entry = first(state);
+    expect(() => applyLibraryCommand(state, {
+      kind: "approve", expectedRevision: state.revision, entryIds: [entry.id],
+    })).toThrow("Publication");
+    const approved = applyLibraryCommand(state, libraryCommandSchema.parse({
+      kind: "approve", expectedRevision: state.revision, entryIds: [entry.id],
+      resolveConflictsAsUnknown: true,
+    }));
+    expect(first(approved).status).toBe("approved");
+    expect(first(approved).publication?.specifications["Dimensions/Width"]).toEqual({ kind: "missing" });
+    expect(approved.sources).toEqual(state.sources);
+    expect(first(state).definition.specifications).toEqual({});
+  });
+  it("ignores conflicting instance Mark values for reusable specifications and publication", () => {
+    const snap = snapshot();
+    const type = snap.types[0];
+    if (!type) throw Error("Missing type");
+    const mark = {
+      key: '["Identity Data","Mark"]',
+      pset: "Identity Data",
+      name: "Mark",
+      measure: "IFCLABEL",
+      unit: null,
+      values: ["1638", "1639"].map((rawValue, i) => ({
+        rawValue,
+        normalized: normalizeObservation({ value: rawValue, unit: null, measure: "IFCLABEL" }),
+        occurrenceIds: [i + 1],
+      })),
+    };
+    type.fields.push(mark);
+    let state = imported(snap);
+    expect(state.sources[0]?.observation.fields).toContainEqual(mark);
+    expect(state.templates[0]?.suggestions.map((item) => item.label)).not.toContain("Mark");
+    expect(entryFieldSuggestions(state, first(state)).map((item) => item.key)).not.toContain(mark.key);
+    expect(entryIssues(state, first(state))).toEqual([]);
+    state = edit(state);
+    state = applyLibraryCommand(state, {
+      kind: "approve",
+      expectedRevision: state.revision,
+      entryIds: [first(state).id],
+    });
+    expect(first(state).status).toBe("approved");
+    expect(state.sources[0]?.observation.fields).toContainEqual(mark);
+  });
   it("keeps BS19 installation fields as provenance without reusable suggestions", () => {
     const snap = snapshot();
     const type = snap.types[0];
@@ -173,12 +249,10 @@ describe("catalog domain", () => {
       "conflicting",
     );
   });
-  it("requires reusable generic specifications or confirmed product identity for publication", () => {
+  it("approves a named categorized generic entry without known specifications", () => {
     let state = imported();
-    expect(entryIssues(state, first(state))).toContain(
-      "Generic entry requires a known reusable specification.",
-    );
-    state = edit(state);
+    expect(first(state).definition.specifications).toEqual({});
+    expect(entryIssues(state, first(state))).toEqual([]);
     state = applyLibraryCommand(state, {
       kind: "approve",
       expectedRevision: state.revision,
@@ -287,6 +361,7 @@ describe("catalog domain", () => {
     const otherType = other.types[0];
     if (!otherType) throw Error("Missing type");
     otherType.typeGlobalId = "other";
+    otherType.name = "";
     state = applyLibraryCommand(state, {
       kind: "import",
       expectedRevision: state.revision,
@@ -595,7 +670,7 @@ describe("confirmed duplicate identity evidence", () => {
 });
 
 describe("review round 1 regressions", () => {
-  it("does not publish a source specification explicitly overridden as missing", () => {
+  it("approves unknown specifications without substituting source values", () => {
     let state = imported();
     const category = state.categories[0];
     if (!category) throw Error("Missing category");
@@ -618,17 +693,14 @@ describe("review round 1 regressions", () => {
       ...first(state).definition,
       specifications: { "Dimensions/Width": { kind: "missing" } },
     });
-    expect(entryIssues(state, first(state))).toContain(
-      "Generic entry requires a known reusable specification.",
-    );
-    expect(() =>
-      applyLibraryCommand(state, {
-        kind: "approve",
-        expectedRevision: state.revision,
-        entryIds: [first(state).id],
-      }),
-    ).toThrow("Publication");
-    expect(first(state).status).toBe("draft");
+    expect(entryIssues(state, first(state))).toEqual([]);
+    state = applyLibraryCommand(state, {
+      kind: "approve",
+      expectedRevision: state.revision,
+      entryIds: [first(state).id],
+    });
+    expect(first(state).status).toBe("approved");
+    expect(first(state).publication?.specifications["Dimensions/Width"]).toEqual({ kind: "missing" });
   });
 
   it("treats n-a as absent product identity and missing observed value", () => {

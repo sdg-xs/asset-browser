@@ -14,6 +14,7 @@ const installationFieldNames = new Set(
     "Type IfcGUID",
     "Revit (GUID)",
     "GUID",
+    "Mark",
     "Functional Location",
     "Workset",
     "Project ID",
@@ -34,7 +35,12 @@ const installationFieldNames = new Set(
   ].map((name) => name.toLowerCase().replace(/\s/g, "")),
 );
 
-export function reusableField(field: Pick<ObservedField, "name">): boolean {
+export function reusableField(
+  field: Pick<ObservedField, "name">,
+  excludedNames: string[] = [],
+): boolean {
+  if (excludedNames.some((name) => name.trim().toLowerCase() === field.name.trim().toLowerCase()))
+    return false;
   const installationMetadata = installationFieldNames.has(
     field.name.toLowerCase().replace(/\s/g, ""),
   );
@@ -146,7 +152,7 @@ export function entryFieldSuggestions(
     entry.sourceReferences.flatMap(
       (r) =>
         sourceFor(state, r.sourceId)
-          ?.observation.fields.filter(reusableField)
+          ?.observation.fields.filter((field) => reusableField(field, state.excludedSourceParameterNames))
           .map((f) => f.key) ?? [],
     ),
   );

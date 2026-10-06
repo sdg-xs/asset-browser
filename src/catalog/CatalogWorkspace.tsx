@@ -134,6 +134,7 @@ export function CatalogWorkspace({
         loadViewer={loadViewer}
         pending={catalog.pending}
         modal={modal}
+        reviewMode={workspace === "Needs review"}
         error={catalog.error}
         onClose={() => setSelected("")}
         onEdit={() => setEditor("edit")}

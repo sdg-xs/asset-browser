@@ -1461,6 +1461,9 @@ input[type="checkbox"] {
 .definition-content .preview {
   height: auto;
 }
+.definition-content .inspector-geometry {
+  display: block;
+}
 .definition-inspector:not(.in-dialog) .inspector-window {
   display: block;
 }

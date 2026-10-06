@@ -86,7 +86,7 @@ function CategoryForm({
   }, [state, id, reconcile]);
   const suggestions = (template?.suggestions ?? []).filter(
     (s) =>
-      reusableField({ name: s.label }) &&
+      reusableField({ name: s.label }, state.excludedSourceParameterNames) &&
       !mappings.some((m) =>
         parameterSourceKeys(s).some((key) =>
           parameterSourceKeys(m).includes(key),
@@ -102,7 +102,8 @@ function CategoryForm({
           savedCategory?.aliases.includes(label),
       ),
     )
-    .flatMap((s) => s.observation.fields);
+    .flatMap((s) => s.observation.fields)
+    .filter((field) => reusableField(field, state.excludedSourceParameterNames));
   const saveTemplate = async () => {
     setError("");
     for (const mapping of mappings) {

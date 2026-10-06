@@ -78,6 +78,24 @@ describe("persistent curated catalog API", () => {
       (await command({ kind: "import", expectedRevision: 0, snapshot })).body,
     );
   }
+  it("persists source parameter exclusions without altering IFC observations or retained parameters", async () => {
+    const type = snapshot.types[0];
+    if (!type) throw Error("Missing fixture type");
+    type.fields = ["Comments", "Location Line"].map((name) => ({
+      key: JSON.stringify(["Identity Data", name]), pset: "Identity Data", name,
+      measure: "IFCLABEL", unit: null,
+      values: [{ rawValue: "Example", sourceUnit: null, sourceMeasure: "IFCLABEL", normalized: { kind: "text", value: "Example", unit: null }, occurrenceIds: [1, 2] }],
+    }));
+    const original = await imported();
+    const updated = catalogLibrarySchema.parse((await command({
+      kind: "exclude-source-parameters", expectedRevision: original.revision, names: ["Location Line"],
+    })).body);
+    expect(updated.sources).toEqual(original.sources);
+    expect(updated.templates[0]?.suggestions.map((field) => field.label)).toEqual(["Comments"]);
+    expect(updated.excludedSourceParameterNames).toEqual(["location line"]);
+    app = await createApp(fixture);
+    expect(await read()).toEqual(updated);
+  });
   it("starts empty, persists imports, and leaves original inventory bytes unchanged", async () => {
     expect((await read()).revision).toBe(0);
     const original = await readFile(join(fixture.dataRoot, "library.json"));
@@ -184,6 +202,12 @@ describe("persistent curated catalog API", () => {
     let state = await imported();
     const [entry, incomplete] = state.entries;
     if (!entry || !incomplete) throw new Error("Expected entries");
+    state = catalogLibrarySchema.parse((await command({
+      kind: "edit",
+      expectedRevision: state.revision,
+      entryId: incomplete.id,
+      definition: { ...incomplete.definition, categoryId: null },
+    })).body);
     state = catalogLibrarySchema.parse(
       (
         await command({
@@ -204,6 +228,7 @@ describe("persistent curated catalog API", () => {
         kind: "approve",
         expectedRevision: state.revision,
         entryIds: [entry.id, incomplete.id],
+        resolveConflictsAsUnknown: true,
       },
       400,
     );

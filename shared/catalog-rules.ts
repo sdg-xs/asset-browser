@@ -9,11 +9,12 @@ import { CatalogDomainError } from "./catalog-errors.js";
 import { entryIssues } from "./catalog-review.js";
 export { CatalogDomainError } from "./catalog-errors.js";
 export { entryIssues, duplicateCandidates } from "./catalog-review.js";
-import { sourceFor, parameterSourceKeys } from "./catalog-observations.js";
+import { sourceFor, parameterSourceKeys, entryFieldSuggestions } from "./catalog-observations.js";
 import { acceptPublication } from "./catalog-publication.js";
 import { changedReferences } from "./catalog-references.js";
 import { importSnapshot } from "./catalog-import.js";
 import { splitEntry } from "./catalog-split.js";
+import { excludeSourceParameters } from "./catalog-exclusions.js";
 export { entryFieldSuggestions } from "./catalog-observations.js";
 
 export function emptyCatalogLibrary(): CatalogLibrary {
@@ -193,6 +194,9 @@ export function applyLibraryCommand(
     );
   const next = structuredClone(state);
   switch (command.kind) {
+    case "exclude-source-parameters":
+      excludeSourceParameters(next, command.names);
+      break;
     case "import":
       validateSnapshot(command);
       if (!importSnapshot(next, command.snapshot)) return state;
@@ -238,6 +242,14 @@ export function applyLibraryCommand(
       const entries = [...new Set(command.entryIds)].map((id) =>
         requireEntry(next, id),
       );
+      if (command.resolveConflictsAsUnknown)
+        for (const entry of entries)
+          for (const suggestion of entryFieldSuggestions(next, entry))
+            if (
+              suggestion.status === "conflicting" &&
+              !Object.hasOwn(entry.definition.specifications, suggestion.key)
+            )
+              entry.definition.specifications[suggestion.key] = { kind: "missing" };
       const issues = entries.flatMap((entry) =>
         entryIssues(next, entry).map((issue) => `${entry.id}: ${issue}`),
       );

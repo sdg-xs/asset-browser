@@ -202,15 +202,15 @@ export function EntryEditor({
               Add specification
             </button>
           </div>
-          <h3>Source suggestions and conflicts</h3>
+          <h3>Source properties</h3>
           {suggestions.map((s) => (
             <section className="suggestion" key={s.key}>
               <strong>{fieldLabel(state, s.key, definition.categoryId)}</strong>
               <span className="badge">
-                {s.status}
-                {s.key in definition.specifications
-                  ? " · resolved by override"
-                  : ""}
+                {Object.hasOwn(definition.specifications, s.key)
+                  ? definition.specifications[s.key]?.kind === "missing" ? "Unknown" : "Curated value"
+                  : s.status === "conflicting" ? "Needs review"
+                    : s.status === "consistent" ? "Source value" : "Missing values"}
               </span>
               <div className="action-row">
                 {s.values.map((v, i) => (

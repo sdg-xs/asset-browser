@@ -119,6 +119,41 @@ function fixture(approved = false) {
   return { api, sources, getState: () => state };
 }
 describe("curated catalog", () => {
+  it("shows unresolved conflicts during review and stops warning after resolving them as unknown", async () => {
+    const f = fixture();
+    const changed = structuredClone(snapshot);
+    changed.fingerprint = "v2";
+    const field = changed.types[0]?.fields[0];
+    if (!field) throw Error("Missing fixture field");
+    field.values = [
+      { rawValue: "600", normalized: { kind: "number", value: 0.6, unit: "m" }, occurrenceIds: [1] },
+      { rawValue: "900", normalized: { kind: "number", value: 0.9, unit: "m" }, occurrenceIds: [2] },
+    ];
+    await f.api.execute({ kind: "import", expectedRevision: f.getState().revision, snapshot: changed });
+    render(<CatalogWorkspace catalogApi={f.api} sourceApi={f.sources} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Needs review" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Inspect Cabinet" }));
+    expect(screen.getByText("Source conflicts · 1 unresolved")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Edit definition" }));
+    fireEvent.click(screen.getByRole("button", { name: "Resolve as unknown" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save definition" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.queryByText(/Source conflicts/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Edit definition" }));
+    expect(screen.getByText("Unknown", { selector: ".badge" })).toBeTruthy();
+    expect(screen.queryByText("Needs review", { selector: ".badge" })).toBeNull();
+    expect(f.getState().sources[0]?.observation.fields[0]?.values).toHaveLength(2);
+  });
+  it("keeps original IFC evidence behind collapsed Source details in the Library", async () => {
+    const f = fixture(true);
+    render(<CatalogWorkspace catalogApi={f.api} sourceApi={f.sources} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Inspect Cabinet" }));
+    expect(screen.getByText("Source details").closest("details")).toHaveProperty("open", false);
+    expect(screen.queryByText("Source observations and conflicts")).toBeNull();
+    expect(screen.queryByText("Source references and original values")).toBeNull();
+    expect(screen.queryByText("Read-only properties")).toBeNull();
+    expect(screen.getByText(/Dimensions \/ Width:/)).toBeTruthy();
+  });
   it("lands on approved definitions and exposes real draft review", async () => {
     const f = fixture();
     render(<CatalogWorkspace catalogApi={f.api} sourceApi={f.sources} />);
@@ -171,6 +206,14 @@ describe("curated catalog", () => {
   });
   it("rejects incomplete batch approval and keeps drafts visible", async () => {
     const f = fixture();
+    const entry = f.getState().entries[0];
+    if (!entry) throw Error("Missing entry");
+    await f.api.execute({
+      kind: "edit",
+      expectedRevision: f.getState().revision,
+      entryId: entry.id,
+      definition: { ...entry.definition, categoryId: null },
+    });
     render(<CatalogWorkspace catalogApi={f.api} sourceApi={f.sources} />);
     fireEvent.click(
       await screen.findByRole("button", { name: /Needs review/ }),
@@ -803,7 +846,9 @@ it("keeps source conflict evidence after saving an explicit specification overri
   );
   fireEvent.click(screen.getByRole("button", { name: "Save definition" }));
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-  expect(screen.getByText(/conflicting \(resolved by override\)/)).toBeTruthy();
+  expect(screen.queryByText(/Source conflicts/)).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Edit definition" }));
+  expect(screen.getByText("Curated value")).toBeTruthy();
   expect(f.getState().sources[0]?.observation.fields[0]?.values).toHaveLength(
     2,
   );
@@ -1219,6 +1264,14 @@ it("falls back to the raw source property name when the selected category has no
 });
 it("explains a real incomplete approval rejection inside the arrow preview", async () => {
   const f = fixture();
+  const entry = f.getState().entries[0];
+  if (!entry) throw Error("Missing entry");
+  await f.api.execute({
+    kind: "edit",
+    expectedRevision: f.getState().revision,
+    entryId: entry.id,
+    definition: { ...entry.definition, kind: "product" },
+  });
   render(<CatalogWorkspace catalogApi={f.api} sourceApi={f.sources} />);
   fireEvent.click(await screen.findByRole("button", { name: "Needs review" }));
   fireEvent.click(
@@ -1230,7 +1283,7 @@ it("explains a real incomplete approval rejection inside the arrow preview", asy
   );
   expect(await within(dialog).findByRole("alert")).toHaveProperty(
     "textContent",
-    expect.stringContaining("known reusable specification"),
+    expect.stringContaining("Product requires confirmed manufacturer and model"),
   );
   expect(dialog).toHaveProperty("open", true);
   expect(f.getState().entries[0]?.status).toBe("draft");

@@ -127,6 +127,7 @@ export const catalogLibrarySchema = z.object({
   templates: z.array(categoryTemplateSchema),
   sources: z.array(sourceRecordSchema),
   entries: z.array(libraryEntrySchema),
+  excludedSourceParameterNames: z.array(z.string().trim().min(1)).optional(),
 });
 export type CatalogLibrary = z.infer<typeof catalogLibrarySchema>;
 const expectedRevision = z.number().int().nonnegative();
@@ -138,6 +139,11 @@ export const sourceRebindingSchema = z.object({
 });
 export type SourceRebinding = z.infer<typeof sourceRebindingSchema>;
 export const libraryCommandSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("exclude-source-parameters"),
+    expectedRevision,
+    names: z.array(z.string().trim().min(1)).min(1),
+  }),
   z.object({
     kind: z.literal("import"),
     expectedRevision,
@@ -151,7 +157,13 @@ export const libraryCommandSchema = z.discriminatedUnion("kind", [
     confirmedSourceReferences: z.array(sourceReferenceSchema).optional(),
     sourceRebindings: z.array(sourceRebindingSchema).optional(),
   }),
-  ...(["approve", "archive", "restore"] as const).map((kind) =>
+  z.object({
+    kind: z.literal("approve"),
+    expectedRevision,
+    entryIds: z.array(id).min(1),
+    resolveConflictsAsUnknown: z.literal(true).optional(),
+  }),
+  ...(["archive", "restore"] as const).map((kind) =>
     z.object({
       kind: z.literal(kind),
       expectedRevision,

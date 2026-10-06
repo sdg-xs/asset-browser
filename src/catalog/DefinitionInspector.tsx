@@ -34,6 +34,7 @@ export function DefinitionInspector({
   onReview,
   onAction,
   modal = false,
+  reviewMode = false,
 }: {
   state: CatalogLibrary;
   entry: LibraryEntry;
@@ -47,6 +48,7 @@ export function DefinitionInspector({
   onReview(mode: "merge" | "split" | "geometry"): void;
   onAction(kind: "approve" | "archive" | "restore"): void;
   modal?: boolean;
+  reviewMode?: boolean;
 }) {
   const preview = useDefinitionPreview(state, entry, sourceApi, createWorker);
   const close = useRef<HTMLButtonElement>(null);
@@ -66,6 +68,12 @@ export function DefinitionInspector({
     };
   }, [entry.id, modal]);
   const issues = entryIssues(state, entry);
+  const conflicts = reviewMode
+    ? entryFieldSuggestions(state, entry).filter(
+        (suggestion) => suggestion.status === "conflicting" &&
+          !Object.hasOwn(entry.definition.specifications, suggestion.key),
+      )
+    : [];
   return (
     <aside
       className={`definition-inspector ${modal ? "in-dialog" : ""}`}
@@ -92,7 +100,7 @@ export function DefinitionInspector({
         </span>
         <h2>{entry.definition.name}</h2>
         <p>{entry.definition.description}</p>
-        {entry.reviewFlags.length > 0 && (
+        {reviewMode && entry.reviewFlags.length > 0 && (
           <p className="review-issues">
             Source changed. Published specifications are retained. Review its
             current observations and preferred geometry before accepting
@@ -119,7 +127,7 @@ export function DefinitionInspector({
         {!Object.keys(entrySpecifications(state, entry)).length && (
           <p>No confirmed specifications yet.</p>
         )}
-        {issues.length > 0 && (
+        {reviewMode && issues.length > 0 && (
           <details className="review-issues">
             <summary>{issues.length} review issues</summary>
             <ul>
@@ -178,23 +186,39 @@ export function DefinitionInspector({
           onClose={onClose}
           onRetry={preview.retry}
           loadViewer={loadViewer}
+          content="geometry"
         />
-        <details>
-          <summary>Source observations and conflicts</summary>
-          {entryFieldSuggestions(state, entry).map((s) => (
+        {conflicts.length > 0 && <details className="review-issues">
+          <summary>Source conflicts · {conflicts.length} unresolved</summary>
+          {conflicts.map((s) => (
             <p key={s.key}>
               <strong>
                 {fieldLabel(state, s.key, entry.definition.categoryId)}
               </strong>
-              : {s.values.map(valueText).join(" / ") || "Unknown"} · {s.status}
-              {s.key in entry.definition.specifications
-                ? " (resolved by override)"
-                : ""}
+              : {s.values.map(valueText).join(" / ")}
             </p>
           ))}
-        </details>
+        </details>}
         <details>
-          <summary>Source references and original values</summary>
+          <summary>Source details</summary>
+          {preview.inspection.kind === "ready" && preview.inspection.properties.length > 0 && (
+            <section>
+              <h4>Previewed IFC element</h4>
+              {preview.inspection.properties.map((group, index) => (
+                <details key={`${group.source}:${group.name}:${index}`} className="property-group">
+                  <summary>{group.name || "Properties"} · {group.source}</summary>
+                  <dl>
+                    {group.values.map((property, propertyIndex) => (
+                      <div key={propertyIndex}>
+                        <dt>{property.name}</dt>
+                        <dd>{property.value || "(blank)"}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </details>
+              ))}
+            </section>
+          )}
           {entry.sourceReferences.map((r) => {
             const source = state.sources.find((s) => s.id === r.sourceId);
             return (

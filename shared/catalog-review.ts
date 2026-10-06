@@ -28,27 +28,6 @@ export function entryIssues(
     Boolean(identityValue(definition.model.value));
   if (definition.kind === "product" && !identityKnown)
     issues.push("Product requires confirmed manufacturer and model.");
-  const mappings =
-    state.templates.find(
-      (template) => template.categoryId === definition.categoryId,
-    )?.mappings ?? [];
-  const knownOverride = Object.values(definition.specifications).some(
-    (value) =>
-      value.kind !== "missing" && (value.kind !== "text" || value.value.trim()),
-  );
-  const knownSuggestion = entryFieldSuggestions(state, entry).some(
-    (suggestion) =>
-      suggestion.status === "consistent" &&
-      !Object.hasOwn(definition.specifications, suggestion.key) &&
-      mappings.some((mapping) => mapping.key === suggestion.key),
-  );
-  if (
-    definition.kind === "generic" &&
-    !knownOverride &&
-    !knownSuggestion &&
-    !identityKnown
-  )
-    issues.push("Generic entry requires a known reusable specification.");
   for (const suggestion of entryFieldSuggestions(state, entry)) {
     if (
       suggestion.status === "conflicting" &&

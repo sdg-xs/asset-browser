@@ -118,7 +118,7 @@ function seedCategories(
     const template = state.templates.find(
       (template) => template.categoryId === category.id,
     );
-    for (const field of observation.fields.filter(reusableField)) {
+    for (const field of observation.fields.filter((field) => reusableField(field, state.excludedSourceParameterNames))) {
       if (
         !template ||
         template.suggestions.some((mapping) =>
