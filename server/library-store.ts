@@ -277,6 +277,43 @@ export class LibraryStore {
   resolveModelFile(id: string): Promise<string> {
     return this.serialized(async () => (await this.findVisible(id)).path);
   }
+  withCurrentModels<T>(
+    requirements: { modelId: string; fingerprint: string }[],
+    operation: (models: LibraryModel[]) => Promise<T>,
+  ): Promise<T> {
+    return this.serialized(async () => {
+      const models: LibraryModel[] = [];
+      for (const requirement of requirements) {
+        const entry = await this.findVisible(requirement.modelId);
+        const file = await open(entry.path, "r");
+        try {
+          const info = await file.stat();
+          if (
+            `${info.size}:${info.mtimeMs}` !== requirement.fingerprint ||
+            entry.model.fingerprint !== requirement.fingerprint
+          )
+            throw new LibraryError(
+              "SOURCE_CHANGED",
+              "The source file changed. Analyze its current revision again.",
+              409,
+            );
+          if (
+            !entry.model.index ||
+            entry.model.index.fingerprint !== requirement.fingerprint
+          )
+            throw new LibraryError(
+              "INDEX_REQUIRED",
+              "Index the current source revision before importing or confirming source references.",
+              409,
+            );
+          models.push(LibraryModelSchema.parse(entry.model));
+        } finally {
+          await file.close();
+        }
+      }
+      return operation(models);
+    });
+  }
   openModelFile(id: string, expectedFingerprint?: string) {
     return this.serialized(async () => {
       const entry = await this.findVisible(id);

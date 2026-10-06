@@ -9,6 +9,7 @@ import multer from "multer";
 import { z, ZodError } from "zod";
 import { CatalogIndexSchema } from "../shared/contracts.js";
 import { DEFAULT_MAX_UPLOAD_BYTES } from "./config.js";
+import { mountCatalogLibraryRoutes } from "./catalog-library-routes.js";
 import {
   LibraryError,
   LibraryStore,
@@ -128,6 +129,7 @@ export async function createApp(
       await store.saveIndex(request.params.id, CatalogIndexSchema.parse(raw)),
     );
   });
+  await mountCatalogLibraryRoutes(app, store, options.dataRoot);
   app.use("/api", (_request, _response, next) => {
     next(
       new LibraryError(
