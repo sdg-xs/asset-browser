@@ -47,7 +47,22 @@ The 32 MiB JSON request limit bounds snapshots; these two samples fit, larger so
 
 Task-owned service PID history was 33560, 30064, 39780 and final 32788 on port 3002. It was launched hidden with `IFC_DATA_ROOT=output/curated-validation-data`; existing port 3001 was untouched. The copied baseline's hidden historical upload was excluded only from isolated state because its original upload path correctly failed the isolated root boundary. Original sources and normal managed files were retained.
 
-Graphify refresh is controller-owned after integration into the normal checkout. The existing normal graph remains navigation assistance; no duplicate worktree graph or invented extraction result is claimed. Full task steps, hashes, ownership and evidence paths are in `.superpowers/sdd/2026-10-06-curated-asset-library/task-5-report.md` locally.
+Graphify was refreshed in the normal checkout after integration. Its graph remains navigation assistance: semantic extraction dropped out-of-scope source attributions, CSS/IFC fixtures are not structural code inputs, and source files remain authoritative. Extraction costs and graph health are recorded locally in `graphify-out/` and `output/curated-delivery/`. Task reports and review decisions are preserved in ignored `output/curated-delivery/sdd-record/`; browser evidence remains local.
+
+## Normal-checkout delivery, 2026-10-06
+
+The independently reviewed implementation was integrated into local `main` at `5553688`. The normal checkout passed all 179 tests across 12 files and the strict typecheck/server/Vite production build. Remote push is outside this delivery.
+
+Fresh version-2 analysis and validated API imports populated the real local catalog with 1,570 drafts, zero approved definitions and 152 original category labels. No validation fixture or sample approval was copied. Staff can curate and approve drafts in Needs review; only approved definitions enter Library.
+
+| Source | Types | Classified occurrences | Import request bytes | Parser/import elapsed ms |
+| --- | ---: | ---: | ---: | ---: |
+| BS19 | 1019 | 4938 | 24146829 | 26916 |
+| JV3 | 551 | 1887 | 11185257 | 14632 |
+
+Both requests fit the unchanged 32 MiB limit. These are single Node-parser/import validation observations, including download, initialization, analysis and command response, rather than UI benchmarks. The original `library.json` still matches its recorded baseline SHA-256. Original IFC files remain in their existing external folders.
+
+Chrome on the normal service verified the 1,570-draft queue, its 50-card first page, empty approved Library and a real Fire Detector centered geometry/property preview. The document and viewport widths were both 1280; console had zero errors/warnings. Screenshots `output/playwright/curated-normal-review.png` and `curated-normal-geometry.png` were inspected. Exact imports, build/test logs and preserved prior acceptance evidence are in ignored `output/curated-delivery/`.
 
 ## Historical source-browser verification
 
