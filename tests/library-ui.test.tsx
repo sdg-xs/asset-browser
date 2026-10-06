@@ -10,7 +10,7 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { App } from "../src/App.js";
+import { SourceWorkspace as App } from "../src/components/SourceWorkspace.js";
 import type {
   CatalogIndex,
   LibraryModel,
