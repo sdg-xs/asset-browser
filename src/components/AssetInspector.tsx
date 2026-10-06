@@ -44,12 +44,14 @@ export function AssetInspector({
   onRetry,
   loadViewer = loadAssetViewer,
   presentation = "sidebar",
+  content = "full",
 }: {
   inspection: Inspection;
   onClose(): void;
   onRetry(): void;
   loadViewer?: ViewerLoader;
   presentation?: "sidebar" | "window";
+  content?: "full" | "geometry";
 }) {
   const [viewerAttempt, setViewerAttempt] = useState(0);
   const AssetViewer = useMemo(
@@ -71,7 +73,7 @@ export function AssetInspector({
   const asset = inspection.asset;
   return (
     <aside
-      className={`inspector inspector-${presentation}`}
+      className={`inspector inspector-${presentation} inspector-${content}`}
       aria-label="Asset inspector"
       onKeyDown={(event) => {
         if (presentation === "sidebar" && event.key === "Escape") onClose();
@@ -90,15 +92,15 @@ export function AssetInspector({
           </button>
         </div>
       )}
-      <div className="inspector-title">
+      {content === "full" && <div className="inspector-title">
         <span className="eyebrow">{asset.categories.join(" · ")}</span>
         <h2>{asset.name || "Unnamed type"}</h2>
         <span>{asset.occurrenceIds.length} occurrences in source model</span>
-      </div>
+      </div>}
       {inspection.kind === "loading" && (
         <div className="preview-message" role="status">
           <Box size={30} />
-          <p>Reading properties and representative geometry…</p>
+          <p>{content === "geometry" ? "Loading 3D preview…" : "Reading properties and representative geometry…"}</p>
         </div>
       )}
       {inspection.kind === "failed" && (
@@ -131,10 +133,10 @@ export function AssetInspector({
               </div>
             )}
           </div>
-          <div className="preview-caption">
+          {content === "full" && <div className="preview-caption">
             Representative occurrence #{inspection.elementId}
-          </div>
-          <section className="property-section">
+          </div>}
+          {content === "full" && <section className="property-section">
             <div className="property-heading">
               <h3>Read-only properties</h3>
               <span>IFC</span>
@@ -175,7 +177,7 @@ export function AssetInspector({
             {!inspection.properties.length && (
               <p>No property groups in this occurrence.</p>
             )}
-          </section>
+          </section>}
         </>
       )}
     </aside>

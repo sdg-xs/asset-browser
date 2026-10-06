@@ -1,3 +1,73 @@
+# Curated catalog verification
+
+Current catalog acceptance was performed on 2026-10-06 in production Chrome through Playwright CLI, Node 24.19.0, using an isolated port-3002 service and copied source indexes. Normal port 3001, normal managed state and original IFC files were preserved. The original source-browser measurements below are historical; their type-card counts do not describe approved catalog definitions.
+
+## Current automated gates
+
+After the final coordinated review fixes, `npm test -- --maxWorkers=2` passed 179 tests in 12 files, in 15.54 seconds. `npm run build` passed strict TypeScript, server compilation and Vite production output. Existing Three CommonJS, Lucide module-directive and large lazy viewer/IFC chunk warnings remain. Current logs are `output/playwright/final-extension-tests.log` and `final-extension-build.log`; earlier Task 5 logs remain retained.
+
+The browser found and fixed three defects: BS19 installation/GUID properties appeared as reusable suggestions; side geometry reused the centered two-column layout and squeezed its canvas; side-inspector cleanup stole focus from the centered arrow opener. Domain and native-dialog focus regressions went RED then GREEN. Raw source observations remain intact, and the actual side/centered layouts were rechecked after the final build.
+
+## Final review regression acceptance
+
+The coordinated fix separates immutable accepted specifications from live suggestions and staff overrides. Canonical category parameter IDs can map several raw source keys; overlapping unequal observations remain conflicts. Schema-1 compatibility preserves existing IDs, revisions and decisions, adds publication snapshots for current approvals, and flags stale legacy approvals while retaining recoverable explicit values. Historical mixed-unit details already lost by legacy aggregation cannot be reconstructed; an explicit version-2 reanalysis enriches them once. Geometry confirmation preserves exact subsets; changed fingerprints require explicit membership selection. Hidden unchanged historical references survive while newly accepted references are validated. Flagged approved entries remain published and also appear in Needs review. Successful category saves reconcile server-preserved aliases.
+
+Focused RED/GREEN cases cover every final-review finding, including API restart retention and real-parser unit provenance. The independent re-review extension also covers known ordinary-text mapping rejection, legacy copied unknown-measure overrides, and distinct current/historical revisions of one source. Explicit rebind metadata supports consolidation of only selected occurrence subsets; API/UI tests retain untouched hidden history. Category save completion now waits for the saved revision before announcing reconciled aliases. The production service loaded the existing 1,576-entry dataset (1 approved, 1,569 drafts, 6 archived fixtures). A single warm Playwright sample measured review opening at 74 ms with 50 cards, filtering Data-Cabinet at 190 ms with 7 cards, and selecting those seven at 36 ms. These are local interaction timings, not cold-load benchmarks or a comparative speedup claim. The selection was not approved. Desktop document width was 1280 at viewport 1280; mobile was 390 at viewport 390. Final desktop/mobile review screenshots and the real approved cabinet preview were visually inspected. Its accepted display values were 8.209124 m² and 0.1952143 m³; geometry remained available, and Escape restored focus to its preview arrow. Console reported zero errors or warnings. No real catalog mutations were performed during this bounded final browser pass.
+
+Artifacts under ignored output/playwright: final-fix-queue-metric.txt, final-fix-review-desktop.png, final-fix-review-mobile.png, final-fix-published-preview.png, final-fix-preview-metrics.txt and final-fix-console.txt. The complete finding-to-fix record is in the local final-fix-report.md beside the task reports.
+
+## Real BS19/JV3 imports
+
+| Source | Types/drafts | Classified occurrences | Observed fields | Compact UTF-8 snapshot bytes | Measured repeat analysis/import |
+| ------ | -----------: | ---------------------: | --------------: | ---------------------------: | ------------------------------: |
+| BS19   |        1,019 |                  4,938 |          55,134 |                   20,037,869 |                       11,005 ms |
+| JV3    |          551 |                  1,887 |          28,679 |                    9,335,873 |                        5,994 ms |
+
+Initial real imports created 1,570 drafts and 152 distinct category labels; the main Library remained empty until explicit approval. The timings above measure a later same-fingerprint repeat, from clicking Analyze through completion of the HTTP response, including download/worker opening, classification/analysis, validation and saving. They are individual local warm-repeat measurements, not first-import benchmarks. Progress was sampled every 500 ms and showed download, opening, property relationships, classified occurrence analysis and saving. Repeat import retained revision 15 and entry counts. Exact payload bytes use Node `Buffer.byteLength(JSON.stringify(snapshot))` on the submitted browser snapshot. Earlier PowerShell reserialization estimates differ slightly because number serialization differs.
+
+The final pretty-printed isolated catalog is 71,976,208 bytes, including two small retained fixture sources. Before the final review fix, full-state responses and unbounded review rendering had a measurable cost: one actual edit response completed in 1,657 ms, and opening the complete review list exceeded the CLI's five-second click timeout before becoming usable. Filtering actual cabinet records worked. No general memory ceiling or throughput claim follows from this run.
+
+## Actual curation and preview
+
+A real BS19 `Base-Cabinet:Drawer-Cabinet_2200x650x900mm` definition was renamed `Generic pantry drawer cabinet`, retained generic identity with no guessed manufacturer, and explicitly approved. It uses source `Dimensions / Area = 8.209124116586796 m²` and `Dimensions / Volume = 0.19521426543496748 m³`; dimensions in its name were not treated as verified specifications. Staff confirmed those category mappings, renamed Area to Surface area and saved the Pantry cabinet alias. The approved entry UUID is `766ee64f-6b94-428b-b94a-d366173c5116`; representative occurrence is 651620. Curated fields lead the inspector; raw IFC properties and source observations remain available below it.
+
+Actual same-name `Data-Cabinet-2:Standard` duplicate comparison displayed widths 0.3, 0.6, 0.4, 0.5 and 1.0 m with unequal heights/areas. They were left separate. This is real-source duplicate evidence, not proof that every candidate is equivalent or every property exporter is supported.
+
+Production screenshots were actually viewed: `final-desktop-side.png`, `final-desktop-centered.png`, `final-mobile-centered.png` and `final-mobile-library.png`. Real geometry and usable Fit asset controls are visible. Desktop is 1280x720 with document width 1280; mobile is 390x844 with document width 390. Escape returned focus to `Preview Generic pantry drawer cabinet`, including after a side inspector had been open. The stable final browser session reported zero console messages, errors or warnings. Earlier harness/session closures and stale snapshots required a task-owned browser restart; they were not attributed to application defects without reproduction.
+
+## Controlled fixture, persistence and retention
+
+The ignored `delivery-fixture.ifc` derives from the real-parser `tests/fixtures/assets.ifc` and adds occurrence widths 0.06/0.08 m. Two task-owned uploads were parsed by the actual IfcReader and imported through the production API. Confirmed Width variant mapping split each draft into exact single-occurrence partitions, producing four drafts. Equivalent 0.08 m partitions merged, preserved target specifications, archived the absorbed definition and returned to draft. After explicit equivalent-reference confirmation and approval, hiding the preferred upload still rendered the visible equivalent source in the browser. The fixture is labeled as a verification asset; it is separate from BS19/JV3 evidence. A stale catalog command returned HTTP 409 `REVISION_CONFLICT`. See `fixture-verification.ts`, `fixture-evidence.json` and `fixture-confirmed-fallback.png` under `output/playwright/`.
+
+BS19 was hidden through its actual Sources confirmation dialog. Its approved definition remained visible with Geometry unavailable. Restart preserved that hidden source state, approved specifications, category/template edits and archived fixture entries. Both original source SHA-256 hashes stayed unchanged, and the normal `library.json` hash matched the untouched copied baseline. To capture final geometry, BS19 visibility was restored only in the stopped isolated data fixture, then the task-owned service was restarted. All six fixture definitions are archived and both uploads hidden/retained; final isolated state is revision 15, 1 approved real entry, 1,569 real drafts and 6 archived fixture entries. Nothing was copied into normal managed data.
+
+## Current limits and follow-up
+
+The 32 MiB JSON request limit bounds snapshots; these two samples fit, larger sources may not. The observations/persistence remain substantial despite distinct-value compaction. Full-state API paging/deltas remain deferred scaling work. Rendering now uses explicit 50-definition pages with visible-page batch selection, cached revision derivations and Set membership checks. Unknown SI labels preserve prefixes and unresolved measures cannot establish strong duplicate equivalence. Numeric displays use seven significant digits; stored values retain their precision. HG62, arbitrary exporters, guaranteed browser/worker memory peaks and long-session leak freedom remain unverified. Source size/mtime fingerprints cannot detect edits preserving both.
+
+Task-owned service PID history was 33560, 30064, 39780 and final 32788 on port 3002. It was launched hidden with `IFC_DATA_ROOT=output/curated-validation-data`; existing port 3001 was untouched. The copied baseline's hidden historical upload was excluded only from isolated state because its original upload path correctly failed the isolated root boundary. Original sources and normal managed files were retained.
+
+Graphify was refreshed in the normal checkout after integration. Its graph remains navigation assistance: semantic extraction dropped out-of-scope source attributions, CSS/IFC fixtures are not structural code inputs, and source files remain authoritative. Extraction costs and graph health are recorded locally in `graphify-out/` and `output/curated-delivery/`. Task reports and review decisions are preserved in ignored `output/curated-delivery/sdd-record/`; browser evidence remains local.
+
+## Normal-checkout delivery, 2026-10-06
+
+The independently reviewed implementation was integrated into local `main` at `5553688`. The normal checkout passed all 179 tests across 12 files and the strict typecheck/server/Vite production build. Remote push is outside this delivery.
+
+Fresh version-2 analysis and validated API imports populated the real local catalog with 1,570 drafts, zero approved definitions and 152 original category labels. No validation fixture or sample approval was copied. Staff can curate and approve drafts in Needs review; only approved definitions enter Library.
+
+| Source | Types | Classified occurrences | Import request bytes | Parser/import elapsed ms |
+| --- | ---: | ---: | ---: | ---: |
+| BS19 | 1019 | 4938 | 24146829 | 26916 |
+| JV3 | 551 | 1887 | 11185257 | 14632 |
+
+Both requests fit the unchanged 32 MiB limit. These are single Node-parser/import validation observations, including download, initialization, analysis and command response, rather than UI benchmarks. The original `library.json` still matches its recorded baseline SHA-256. Original IFC files remain in their existing external folders.
+
+Chrome on the normal service verified the 1,570-draft queue, its 50-card first page, empty approved Library and a real Fire Detector centered geometry/property preview. The document and viewport widths were both 1280; console had zero errors/warnings. Screenshots `output/playwright/curated-normal-review.png` and `curated-normal-geometry.png` were inspected. Exact imports, build/test logs and preserved prior acceptance evidence are in ignored `output/curated-delivery/`.
+
+## Historical source-browser verification
+
+The following sections record the earlier parser, viewer and source-browser work. The current catalog scope above supersedes their source-model card/read-only catalog assumptions.
+
 # Browser IFC verification
 
 Measured locally on 2026-10-05 using Chrome through Playwright CLI, Node 24.19.0 and the lockfile-pinned npm packages. The production catalog is `/`. Task 2's temporary `/validation.html` entry has been removed; its historical measurements below remain applicable to the parser/viewer revision tested at that time.
@@ -59,22 +129,22 @@ The targeted production Chrome fault probe also caught native dynamic-import fai
 
 Source: `C:/Users/StevenGomba/OneDrive - HEMY AS/Desktop/Omniverse Working Files/PROPERTIES/BS19/IFC/BS19.ifc`, 122,676,603 bytes.
 
-| Measurement | Result |
-| --- | --- |
-| Development fetch + worker initialization + indexing | 17,768.6 ms |
-| Production build first completed indexing run | 20,779.6 ms |
-| Final production build indexing run | 15,153.3 ms |
-| Physical `IFCELEMENT` population, including subclasses | 9,204 |
-| Classified and reliably typed occurrences | 4,938 |
-| Excluded absent/blank/NA effective classification | 4,187 |
-| Classified occurrences missing an unambiguous type | 79 |
-| Type cards, grouped by model ID and IFC type GlobalId | 1,019 |
-| Distinct category strings (case preserved) | 107 |
-| Selected occurrence mesh + property request round-trip | 80.8 ms |
-| Final production mesh + property request round-trip | 96.6 ms |
-| Selected occurrence geometry | 2 meshes, 954 triangles |
-| Selected occurrence property groups | 15 |
-| Transformed preview bounds, metres | 0.058645 × 0.081774 × 0.085005 |
+| Measurement                                            | Result                         |
+| ------------------------------------------------------ | ------------------------------ |
+| Development fetch + worker initialization + indexing   | 17,768.6 ms                    |
+| Production build first completed indexing run          | 20,779.6 ms                    |
+| Final production build indexing run                    | 15,153.3 ms                    |
+| Physical `IFCELEMENT` population, including subclasses | 9,204                          |
+| Classified and reliably typed occurrences              | 4,938                          |
+| Excluded absent/blank/NA effective classification      | 4,187                          |
+| Classified occurrences missing an unambiguous type     | 79                             |
+| Type cards, grouped by model ID and IFC type GlobalId  | 1,019                          |
+| Distinct category strings (case preserved)             | 107                            |
+| Selected occurrence mesh + property request round-trip | 80.8 ms                        |
+| Final production mesh + property request round-trip    | 96.6 ms                        |
+| Selected occurrence geometry                           | 2 meshes, 954 triangles        |
+| Selected occurrence property groups                    | 15                             |
+| Transformed preview bounds, metres                     | 0.058645 × 0.081774 × 0.085005 |
 
 The known type GlobalId `0iEspr7ox$PCrl9h2pzQQO` is present, named `Air-Quality_CO2-Sensor:Airthings-Space-Mini_80mm_Indoor`, class `IFCCOMMUNICATIONSAPPLIANCETYPE`, category `Air quality sensor`. Its occurrence IDs are `1118159`, `1118216`, `1118323`; the deterministic first representative is `1118159`. Instance `Identity Data` contains the real classification and asset name. Type identity includes Express ID `1118152` and the expected GlobalId.
 
@@ -104,17 +174,17 @@ The reader now resolves an occurrence's category before considering its type cat
 
 Memory collection used a fresh Playwright CLI Chrome session, `asset-memory`, at the production `/validation.html`. Browser CDP `SystemInfo.getProcessInfo` returned only processes owned by that session. For every sample, the PowerShell collector fetched that list again, checked each process name was Chrome, then read Windows `PrivateMemorySize64` and `WorkingSet64` only for those IDs. Browser PID 12348 belonged to CLI PID 30064 and used a temporary Playwright profile. The scope included its browser, three renderers, GPU, network and storage processes. It excluded the local Node service and all other Chrome sessions.
 
-| Phase | Samples | Maximum private MiB | Last private MiB | Maximum working-set MiB | Last working-set MiB |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| Before opening BS19 | 3 | 261.0 | 261.0 | 485.4 | 485.4 |
-| First indexing through ready | 18 | 689.9 | 683.8 | 921.0 | 913.1 |
-| Retained source and rendered preview | 5 | 740.9 | 736.9 | 933.0 | 931.5 |
-| After source switch disposed worker/viewer | 8 | 366.8 | 327.7 | 568.2 | 550.7 |
-| Second open before cancellation | 2 | 649.4 | 649.4 | 890.0 | 890.0 |
-| After cancellation during parser opening | 8 | 662.2 | 282.0 | 902.6 | 532.3 |
-| Retry indexing through ready | 18 | 708.7 | 696.7 | 948.5 | 932.7 |
-| Retry rendered preview | 3 | 745.6 | 739.5 | 940.3 | 934.9 |
-| After retry source switch/disposal | 6 | 376.2 | 346.7 | 580.6 | 554.1 |
+| Phase                                      | Samples | Maximum private MiB | Last private MiB | Maximum working-set MiB | Last working-set MiB |
+| ------------------------------------------ | ------: | ------------------: | ---------------: | ----------------------: | -------------------: |
+| Before opening BS19                        |       3 |               261.0 |            261.0 |                   485.4 |                485.4 |
+| First indexing through ready               |      18 |               689.9 |            683.8 |                   921.0 |                913.1 |
+| Retained source and rendered preview       |       5 |               740.9 |            736.9 |                   933.0 |                931.5 |
+| After source switch disposed worker/viewer |       8 |               366.8 |            327.7 |                   568.2 |                550.7 |
+| Second open before cancellation            |       2 |               649.4 |            649.4 |                   890.0 |                890.0 |
+| After cancellation during parser opening   |       8 |               662.2 |            282.0 |                   902.6 |                532.3 |
+| Retry indexing through ready               |      18 |               708.7 |            696.7 |                   948.5 |                932.7 |
+| Retry rendered preview                     |       3 |               745.6 |            739.5 |                   940.3 |                934.9 |
+| After retry source switch/disposal         |       6 |               376.2 |            346.7 |                   580.6 |                554.1 |
 
 The sampler waited 500 ms between CLI/CDP/OS collection calls; actual sample intervals were approximately 1.4 seconds. Values are sampled process totals, not guaranteed peaks. Private bytes measure committed process allocations. Working sets measure resident process pages and their sum can double-count shared pages. GPU memory outside process accounting is not measured. The main page and dedicated worker share a renderer, so these numbers cannot isolate worker memory. No main-thread heap measurement is presented as whole-browser memory, and no forced garbage collection was used.
 

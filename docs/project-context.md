@@ -1,37 +1,35 @@
 # Project context
 
-Reviewed against local `main` at `8f2cd6f` on 2026-10-06. Recheck Git status and current tests when resuming; this document records scope and implementation decisions rather than live process state.
+The next proposed baseline is the [maintainable asset creation workflow](superpowers/specs/2026-10-06-asset-creation-workflow-design.md): Library is the front page and upload entry point; Generic Hard Asset supplies classification; staff finalize drafts in Needs review before approval. This design awaits written-spec review and is not yet implemented. [Domain vocabulary](../CONTEXT.md) defines asset as a maintainable building component and distinguishes reusable definitions from occurrences.
 
-## Scope and decisions
+The approved scope changed on 2026-10-06 from source-type browsing to a persistent staff-curated catalog. [Requirements](requirements-review.md) and the [curated design](superpowers/specs/2026-10-06-curated-asset-library-design.md) supersede the original source-GUID card/read-only curation assumptions. Read [verification](verification.md) for evidence and limits, and check current Git status/tests when resuming.
 
-The delivered build is a staff-only, local-first IFC asset browser. The agreed MVP has a library, read-only properties and representative geometry. FM import remains a future integration. Existing facility management, digital-twin placement, RFA families, property editing and Nucleus are outside this build. The UI references Autodesk Content Catalog and uses HEMY branding.
+## Delivered behavior
 
-The user selected BS19 for initial verification. Categories come from `Identity Data / Generic Hard Asset`. An instance property takes precedence whenever present; a type property supplies the value only when the instance property is absent. Effective blank or `NA` values are excluded. Cards group by source model identity and IFC type GlobalId and retain occurrence IDs. One card can have multiple categories.
+Library contains approved product or generic specification definitions, each with an independent UUID. Needs review contains imported drafts and approved entries whose sources changed. Published values remain frozen until explicit acceptance. Categories manages canonical labels, aliases and confirmed specification/variant mappings. Sources retains the original source browser, indexing, uploads, hide controls, geometry and raw IFC properties, and adds explicit reusable analysis/import.
 
-The authoritative scope is [requirements-review.md](requirements-review.md). The completed original plan is [the MVP implementation plan](superpowers/plans/2026-10-05-web-asset-browser-mvp.md).
+Staff confirms category, specifications, product identity, merge decisions and approval. Source observations and curated overrides are separate. Same-name cabinets with different dimensions remain separate. Split and merge results return to draft. A hidden source retains original bytes and approved definitions; geometry becomes unavailable unless another reviewed equivalent source can supply it. IFC editing, FM, placement, RFA, Nucleus and commercial Platform integration remain deferred.
 
-## Current behavior and architecture
+## Ownership and persistence
 
-Clicking a card selects it and opens the side inspector. Clicking its arrow selects the same card and opens a centered dialog containing the geometry and parameters. Grid and list views support both actions. Dialog close or Escape restores focus to its opener. Card cubes are placeholders; geometry loads on selection.
+`shared/catalog-library.ts` owns the Zod schema and command union. `catalog-rules.ts`, `catalog-observations.ts`, normalization/import/publication/variant modules own domain decisions. `src/catalog/` owns catalog authoring, API/revision state and representative preview selection. The existing `src/library/`, IFC worker/reader and AssetInspector remain the source/geometry implementation.
 
-`src/library/useLibrary.ts` coordinates inventory, indexing and inspection. `src/ifc/client.ts` and `worker.ts` manage a dedicated browser worker. `reader.ts` reads properties and extracts a representative occurrence with web-ifc `GetFlatMesh`. That Open Components supplies the viewer world and camera, and Three.js draws meshes. This is an element preview, without full-building Fragments conversion or a commercial That Open Platform backend.
+`server/library-store.ts` retains source identities, indexes and visibility in `library.json`. `server/catalog-library-store.ts` persists `catalog-library.json`, schema version 1, through serialized atomic writes with revision checks. Catalog requests return full state. `SOURCE_CHANGED` protects downloads/indexes, and `REVISION_CONFLICT` protects staff decisions. No stale mutation is silently replayed.
 
-`server/library-store.ts` discovers originals, retains managed uploads and saves catalog indexes and visibility in `.local-data/library.json`. Removal hides a model and keeps its bytes. `shared/contracts.ts` defines validated API records. Download and index-save fingerprints bind derived data to source size and modification time. Revision conflicts refresh metadata and retry indexing once. Keep one service process per data directory.
+IFC indexing and reusable observation analysis run in dedicated browser workers. That Open Components and Three.js render selected-occurrence web-ifc meshes without full-building Fragments conversion. Curated values lead the inspector; raw IFC remains read-only provenance.
 
-See [architecture-review.md](architecture-review.md) for responsibilities and [README.md](../README.md) for commands, configuration and API routes.
+## Local delivery
 
-## Models and repository delivery
+Use Node 24+, `npm run dev`, or `npm run build` then `npm start`. Configure `IFC_SOURCE_ROOT` for another computer. The default remains the external `PROPERTIES/<CODE>/IFC/*.ifc` folder. A fresh clone has no approved catalog until staff imports and approves real definitions. Original IFC files, managed uploads, catalog JSON and `output/playwright/` evidence are ignored local artifacts. Do not copy the validation catalog into normal managed data.
 
-The repository is [sdg-xs/asset-browser](https://github.com/sdg-xs/asset-browser). `main` was pushed and made the default branch. Actual BS19 and HG62 files are external local sources and were not committed. Only small IFC test fixtures are in Git. A clone needs `IFC_SOURCE_ROOT` configured or IFC uploads to populate its library.
+Task 5 used an isolated production service on port 3002 with a copied source index in `output/curated-validation-data`. Normal port 3001/data and source files were preserved. It imported BS19/JV3, curated an actual BS19 generic cabinet using source area/volume, and checked side/centered geometry. A small real-parser fixture separately exercised split, merge, revision conflict and confirmed fallback. See the task report for the exact final isolated state.
 
-The local default source root points to `C:/Users/StevenGomba/OneDrive - HEMY AS/Desktop/Omniverse Working Files/PROPERTIES`, with sources under `<CODE>/IFC/*.ifc`. Uploads and catalog state are ignored local data. Use the Node/Vite service to run the application; opening HTML through Live Preview does not provide its API or build pipeline.
+## Limits and navigation
 
-## Evidence and remaining limits
+Snapshots were about 20.0 MB for BS19 and 9.3 MB for JV3; combined pretty JSON was about 72 MB. Full-state APIs cost time and memory. Review rendering is paged at 50 definitions; selection applies to the visible page, and derived observations are cached. No HG62, exporter-wide, guaranteed memory-peak or long-session leak claim is made. Source fingerprints use size/mtime. Unsupported units never acquire guessed normalization.
 
-BS19 has 1,019 catalog types and 107 categories. The verified Airthings sensor occurrence 1118159 renders two meshes and 954 triangles, with 16 property panels including type identity. Both card and arrow previews were checked in Chrome, including a narrow viewport and modal focus return. Historical indexing measurements took 13–21 seconds on this machine. Cached catalogs still require a source parse before first inspection.
+The ignored `graphify-out/` graph in the normal checkout is navigation assistance. The controller refreshes it after integrating source/docs changes, using the corrected local dispatch. No duplicate worktree graph was generated. Verify graph findings against cited files; planned requirements are not implementation evidence.
 
-The viewer's approximately 5.97 MB uncompressed SDK chunk remains a deferred optimization. Size/mtime fingerprints cannot detect edits that preserve both values. HG62, every IFC exporter, guaranteed memory ceilings and long-session leak freedom remain unverified. [verification.md](verification.md) records automated checks and historical browser evidence; ignored `output/playwright/` files are local artifacts, not shipped repository assets.
+Geometry reference identity includes source ID and fingerprint: merged current/historical revision partitions remain distinct through review, and unchanged hidden history is retained. Category parameters reject known incompatible ordinary text/number kinds; unresolved measured text remains incomplete evidence until a verified interpretation is supplied. Legacy copied unknown-measure overrides acquire provenance markers without changing their raw text decisions.
 
-## Graphify
-
-The local `graphify-out/` graph is navigation assistance. Verify facts against its cited source files and distinguish planned requirements from implemented behavior. It excludes original IFC geometry, managed storage, build output and dependencies. Refresh after source or documentation changes using `graphify-out/refresh.ps1` when Gemini is configured, or invoke the Graphify skill for host extraction. Generated graphs and credentials are not repository deliverables.
+Geometry confirmation commands may supply sourceRebindings (source ID, old/new fingerprint and explicitly selected occurrences). Rebinding into a revision already represented consolidates only the selected subset with that existing partition; unselected occurrences cannot enter the union. Historical partitions remain separate unless explicitly rebound.
