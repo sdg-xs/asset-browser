@@ -22,6 +22,7 @@ export function DefinitionInspector({
   createWorker,
   loadViewer,
   pending,
+  error,
   onClose,
   onEdit,
   onReview,
@@ -34,6 +35,7 @@ export function DefinitionInspector({
   createWorker(): LibraryWorker;
   loadViewer: ViewerLoader;
   pending: boolean;
+  error: string;
   onClose(): void;
   onEdit(): void;
   onReview(mode: "merge" | "split" | "geometry"): void;
@@ -69,6 +71,8 @@ export function DefinitionInspector({
         )}
       </div>
       <div className="definition-content">
+        {modal && error && <p role="alert">{error}</p>}
+        {modal && pending && <p role="status">Saving catalog…</p>}
         <span className="eyebrow">
           {state.categories.find((c) => c.id === entry.definition.categoryId)
             ?.name ?? "Uncategorized"}{" "}
@@ -87,7 +91,7 @@ export function DefinitionInspector({
           {Object.entries(entrySpecifications(state, entry)).map(
             ([key, value]) => (
               <div key={key}>
-                <dt>{fieldLabel(state, key)}</dt>
+                <dt>{fieldLabel(state, key, entry.definition.categoryId)}</dt>
                 <dd>{valueText(value)}</dd>
               </div>
             ),
@@ -160,8 +164,10 @@ export function DefinitionInspector({
           <summary>Source observations and conflicts</summary>
           {entryFieldSuggestions(state, entry).map((s) => (
             <p key={s.key}>
-              <strong>{fieldLabel(state, s.key)}</strong>:{" "}
-              {s.values.map(valueText).join(" / ") || "Unknown"} · {s.status}
+              <strong>
+                {fieldLabel(state, s.key, entry.definition.categoryId)}
+              </strong>
+              : {s.values.map(valueText).join(" / ") || "Unknown"} · {s.status}
               {s.key in entry.definition.specifications
                 ? " (resolved by override)"
                 : ""}

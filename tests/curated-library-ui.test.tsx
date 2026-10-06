@@ -892,3 +892,331 @@ it("preserves numeric units through a blank edit and records zero as a number", 
     unit: "m",
   });
 });
+
+it("locks the submitted edit while a delayed successful save is pending", async () => {
+  const f = fixture(),
+    pending = deferred<CatalogLibrary>();
+  const api: CatalogApi = {
+    read: f.api.read,
+    execute: vi.fn(() => pending.promise),
+  };
+  render(<CatalogWorkspace catalogApi={api} sourceApi={f.sources} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Needs review" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Inspect Cabinet" }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Edit definition" }));
+  fireEvent.change(screen.getByLabelText("Name"), {
+    target: { value: "Submitted name" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Save definition" }));
+  expect(screen.getByLabelText("Name").matches(":disabled")).toBe(true);
+  expect(screen.getByLabelText("Kind").matches(":disabled")).toBe(true);
+  const entry = required(f.getState().entries[0]);
+  const result = await f.api.execute({
+    kind: "edit",
+    expectedRevision: f.getState().revision,
+    entryId: entry.id,
+    definition: { ...entry.definition, name: "Submitted name" },
+  });
+  await act(async () => pending.resolve(result));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(f.getState().entries[0]?.definition.name).toBe("Submitted name");
+});
+it.each(["approve", "archive", "edit", "geometry", "merge", "split"] as const)(
+  "shows %s rejection inside the active native modal and keeps it open",
+  async (action) => {
+    const f = fixture();
+    if (action === "merge")
+      await f.api.execute({
+        kind: "import",
+        expectedRevision: f.getState().revision,
+        snapshot: { ...snapshot, modelId: "other", sourceName: "Other.ifc" },
+      });
+    if (action === "split")
+      await f.api.execute({
+        kind: "template",
+        expectedRevision: f.getState().revision,
+        categoryId: required(f.getState().categories[0]).id,
+        mappings: [
+          {
+            key: "width",
+            label: "Width",
+            dataKind: "number",
+            canonicalUnit: "m",
+            role: "variant",
+          },
+        ],
+      });
+    const api: CatalogApi = {
+      read: f.api.read,
+      execute: vi.fn(async () => {
+        throw new CatalogRequestError(
+          "PUBLICATION_INVALID",
+          "Review required: rejected mutation.",
+        );
+      }),
+    };
+    render(<CatalogWorkspace catalogApi={api} sourceApi={f.sources} />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Needs review" }),
+    );
+    fireEvent.click(
+      required(
+        (await screen.findAllByRole("button", { name: "Preview Cabinet" }))[0],
+      ),
+    );
+    let dialog = screen.getByRole("dialog", { name: "Definition preview" });
+    if (action === "approve" || action === "archive")
+      fireEvent.click(
+        within(dialog).getByRole("button", {
+          name:
+            action === "approve" ? "Approve definition" : "Archive definition",
+        }),
+      );
+    else {
+      const launch = {
+        edit: "Edit definition",
+        geometry: "Preferred geometry",
+        merge: "Compare duplicates",
+        split: "Split variants",
+      }[action];
+      fireEvent.click(within(dialog).getByRole("button", { name: launch }));
+      const title = {
+        edit: "Edit definition",
+        geometry: "Choose preferred geometry",
+        merge: "Compare and merge definitions",
+        split: "Split specification variants",
+      }[action];
+      dialog = screen.getByRole("dialog", { name: title });
+      if (action === "merge")
+        fireEvent.click(within(dialog).getByRole("checkbox"));
+      if (action === "split")
+        fireEvent.click(within(dialog).getByLabelText("Width"));
+      const submit = {
+        edit: "Save definition",
+        geometry: "Save preferred geometry",
+        merge: "Confirm merge",
+        split: "Confirm split into drafts",
+      }[action];
+      fireEvent.click(within(dialog).getByRole("button", { name: submit }));
+    }
+    expect(await within(dialog).findByRole("alert")).toHaveProperty(
+      "textContent",
+      expect.stringContaining("rejected mutation"),
+    );
+    expect(dialog).toHaveProperty("open", true);
+    expect(f.getState().entries[0]?.status).toBe("draft");
+  },
+);
+it("uses each category mapping for the same property key on cards, inspector and editor", async () => {
+  const f = fixture(true);
+  await f.api.execute({
+    kind: "import",
+    expectedRevision: f.getState().revision,
+    snapshot: {
+      ...snapshot,
+      modelId: "second",
+      sourceName: "Door.ifc",
+      types: snapshot.types.map((t) => ({
+        ...t,
+        name: "Door",
+        categories: ["Doors"],
+      })),
+    },
+  });
+  for (const category of f.getState().categories)
+    await f.api.execute({
+      kind: "template",
+      expectedRevision: f.getState().revision,
+      categoryId: category.id,
+      mappings: [
+        {
+          key: "width",
+          label: category.name === "Doors" ? "Clear opening" : "Cabinet width",
+          dataKind: "number",
+          canonicalUnit: "m",
+          role: "specification",
+        },
+      ],
+    });
+  const door = required(
+    f.getState().entries.find((e) => e.definition.name === "Door"),
+  );
+  await f.api.execute({
+    kind: "approve",
+    expectedRevision: f.getState().revision,
+    entryIds: [door.id],
+  });
+  render(<CatalogWorkspace catalogApi={f.api} sourceApi={f.sources} />);
+  expect(
+    await within(
+      await screen.findByRole("button", { name: "Inspect Door" }),
+    ).findByText("Clear opening"),
+  ).toBeTruthy();
+  expect(
+    within(screen.getByRole("button", { name: "Inspect Cabinet" })).getByText(
+      "Cabinet width",
+    ),
+  ).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Inspect Door" }));
+  const inspector = screen.getByRole("complementary", {
+    name: "Definition inspector",
+  });
+  expect(
+    within(inspector).getAllByText("Clear opening").length,
+  ).toBeGreaterThan(0);
+  expect(within(inspector).queryByText("Cabinet width")).toBeNull();
+  fireEvent.click(
+    within(inspector).getByRole("button", { name: "Edit definition" }),
+  );
+  expect(
+    within(screen.getByRole("dialog")).getByRole("button", {
+      name: "Use source value Clear opening: 0.6 m",
+    }),
+  ).toBeTruthy();
+});
+it("replaces cached availability with unknown on failed inventory refresh and retries", async () => {
+  const f = fixture(true);
+  let unavailable = false;
+  f.sources.list = vi.fn(async () => {
+    if (unavailable) throw new Error("Inventory connection lost");
+    return [sourceModel()];
+  });
+  render(<CatalogWorkspace catalogApi={f.api} sourceApi={f.sources} />);
+  await screen.findByText("Geometry available");
+  unavailable = true;
+  fireEvent.click(screen.getByRole("button", { name: "Categories" }));
+  fireEvent.click(screen.getByRole("button", { name: "Library" }));
+  await screen.findByRole("button", { name: "Retry source availability" });
+  expect(screen.queryByText("Geometry available")).toBeNull();
+  expect(screen.getByText("Geometry availability unknown")).toBeTruthy();
+  unavailable = false;
+  fireEvent.click(
+    screen.getByRole("button", { name: "Retry source availability" }),
+  );
+  await screen.findByText("Geometry available");
+  expect(
+    screen.queryByRole("button", { name: "Retry source availability" }),
+  ).toBeNull();
+});
+
+it("keeps category-specific labels in duplicate comparisons and raw labels in template source controls", async () => {
+  const f = fixture();
+  for (const modelId of ["door-a", "door-b"])
+    await f.api.execute({
+      kind: "import",
+      expectedRevision: f.getState().revision,
+      snapshot: {
+        ...snapshot,
+        modelId,
+        types: snapshot.types.map((t) => ({
+          ...t,
+          name: "Door",
+          categories: ["Doors"],
+        })),
+      },
+    });
+  for (const category of f.getState().categories)
+    await f.api.execute({
+      kind: "template",
+      expectedRevision: f.getState().revision,
+      categoryId: category.id,
+      mappings: [
+        {
+          key: "width",
+          label: category.name === "Doors" ? "Clear opening" : "Cabinet width",
+          dataKind: "number",
+          canonicalUnit: "m",
+          role: "specification",
+        },
+      ],
+    });
+  render(<CatalogWorkspace catalogApi={f.api} sourceApi={f.sources} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Needs review" }));
+  fireEvent.click(
+    required(
+      (await screen.findAllByRole("button", { name: "Inspect Door" }))[0],
+    ),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Compare duplicates" }));
+  const dialog = screen.getByRole("dialog");
+  expect(within(dialog).getAllByText(/Source Clear opening:/)).toHaveLength(2);
+  expect(within(dialog).queryByText(/Cabinet width/)).toBeNull();
+  fireEvent.click(within(dialog).getByRole("button", { name: "Close dialog" }));
+  fireEvent.click(screen.getByRole("button", { name: "Categories" }));
+  fireEvent.change(screen.getByLabelText("Category to edit"), {
+    target: {
+      value: required(f.getState().categories.find((c) => c.name === "Doors"))
+        .id,
+    },
+  });
+  expect(screen.getByLabelText("Display label")).toHaveProperty(
+    "value",
+    "Clear opening",
+  );
+  expect(
+    within(screen.getByLabelText("Source property")).getByRole("option", {
+      name: "Dimensions / Width",
+    }),
+  ).toBeTruthy();
+});
+it("falls back to the raw source property name when the selected category has no mapping", async () => {
+  const f = fixture();
+  const cabinets = required(f.getState().categories[0]);
+  await f.api.execute({
+    kind: "template",
+    expectedRevision: f.getState().revision,
+    categoryId: cabinets.id,
+    mappings: [
+      {
+        key: "width",
+        label: "Cabinet width",
+        dataKind: "number",
+        canonicalUnit: "m",
+        role: "specification",
+      },
+    ],
+  });
+  await f.api.execute({
+    kind: "category",
+    expectedRevision: f.getState().revision,
+    id: "unmapped",
+    name: "Unmapped",
+    aliases: [],
+  });
+  render(<CatalogWorkspace catalogApi={f.api} sourceApi={f.sources} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Needs review" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Inspect Cabinet" }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Edit definition" }));
+  fireEvent.change(screen.getByLabelText("Category"), {
+    target: { value: "unmapped" },
+  });
+  const dialog = screen.getByRole("dialog");
+  expect(
+    within(dialog).getByRole("button", {
+      name: "Use source value Width: 0.6 m",
+    }),
+  ).toBeTruthy();
+  expect(within(dialog).queryByText("Cabinet width")).toBeNull();
+});
+it("explains a real incomplete approval rejection inside the arrow preview", async () => {
+  const f = fixture();
+  render(<CatalogWorkspace catalogApi={f.api} sourceApi={f.sources} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Needs review" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Preview Cabinet" }),
+  );
+  const dialog = screen.getByRole("dialog", { name: "Definition preview" });
+  fireEvent.click(
+    within(dialog).getByRole("button", { name: "Approve definition" }),
+  );
+  expect(await within(dialog).findByRole("alert")).toHaveProperty(
+    "textContent",
+    expect.stringContaining("known reusable specification"),
+  );
+  expect(dialog).toHaveProperty("open", true);
+  expect(f.getState().entries[0]?.status).toBe("draft");
+});

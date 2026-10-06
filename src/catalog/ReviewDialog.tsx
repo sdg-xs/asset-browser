@@ -102,13 +102,17 @@ export function ReviewDialog({
                   <p>
                     {candidate.differences.length
                       ? candidate.differences
-                          .map((key) => fieldLabel(state, key))
+                          .map((key) =>
+                            fieldLabel(state, key, entry.definition.categoryId),
+                          )
                           .join(" · ")
                       : "No known differences"}
                   </p>
                   <p>
                     {candidate.missingEvidence
-                      .map((key) => fieldLabel(state, key))
+                      .map((key) =>
+                        fieldLabel(state, key, entry.definition.categoryId),
+                      )
                       .join(" · ")}
                   </p>
                   <div className="comparison-columns">
@@ -122,7 +126,13 @@ export function ReviewDialog({
                         </p>
                         {entryFieldSuggestions(state, e).map((field) => (
                           <p key={`source:${field.key}`}>
-                            Source {fieldLabel(state, field.key)}:{" "}
+                            Source{" "}
+                            {fieldLabel(
+                              state,
+                              field.key,
+                              e.definition.categoryId,
+                            )}
+                            :{" "}
                             {field.values.map(valueText).join(" / ") ||
                               "Unknown"}{" "}
                             · {field.status}
@@ -131,7 +141,8 @@ export function ReviewDialog({
                         {Object.entries(entrySpecifications(state, e)).map(
                           ([key, value]) => (
                             <p key={key}>
-                              {fieldLabel(state, key)}: {valueText(value)}
+                              {fieldLabel(state, key, e.definition.categoryId)}:{" "}
+                              {valueText(value)}
                             </p>
                           ),
                         )}

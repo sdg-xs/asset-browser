@@ -4,13 +4,13 @@ import type {
   CatalogLibrary,
   LibraryEntry,
 } from "../../shared/catalog-library.js";
-import type { LibraryModel } from "../../shared/contracts.js";
+import type { SourceAvailability } from "./useSourceAvailability.js";
 import { entrySpecifications, fieldLabel, valueText } from "./display.js";
 import { geometrySource } from "./useDefinitionPreview.js";
 export function DefinitionCards({
   state,
   entries,
-  models,
+  availability,
   selected,
   checked,
   mode,
@@ -20,7 +20,7 @@ export function DefinitionCards({
 }: {
   state: CatalogLibrary;
   entries: LibraryEntry[];
-  models: LibraryModel[];
+  availability: SourceAvailability;
   selected: string;
   checked: string[];
   mode: "grid" | "list";
@@ -76,7 +76,7 @@ export function DefinitionCards({
                   .slice(0, 3)
                   .map(([key, value]) => (
                     <span key={key}>
-                      {fieldLabel(state, key)}{" "}
+                      {fieldLabel(state, key, entry.definition.categoryId)}{" "}
                       <strong>{valueText(value)}</strong>
                     </span>
                   ))}
@@ -89,13 +89,15 @@ export function DefinitionCards({
                 </span>
               )}
               <span className="availability">
-                {entry.sourceReferences.some(
-                  (r, i) =>
-                    (i === 0 || r.equivalent) &&
-                    geometrySource(state, r, models),
-                )
-                  ? "Geometry available"
-                  : "Geometry unavailable"}
+                {availability.kind !== "ready"
+                  ? "Geometry availability unknown"
+                  : entry.sourceReferences.some(
+                        (r, i) =>
+                          (i === 0 || r.equivalent) &&
+                          geometrySource(state, r, availability.models),
+                      )
+                    ? "Geometry available"
+                    : "Geometry unavailable"}
                 {entry.reviewFlags.length ? " · Source changed" : ""}
               </span>
             </div>

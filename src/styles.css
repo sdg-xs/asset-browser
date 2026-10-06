@@ -1747,3 +1747,9 @@ input[type="checkbox"] {
     transition: none;
   }
 }
+.author-dialog fieldset.authoring-fields {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}

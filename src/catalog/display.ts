@@ -9,10 +9,15 @@ export function valueText(value: NormalizedValue) {
     ? "Unknown"
     : `${value.value}${value.unit ? ` ${value.unit}` : ""}`;
 }
-export function fieldLabel(state: CatalogLibrary, key: string) {
+export function fieldLabel(
+  state: CatalogLibrary,
+  key: string,
+  categoryId: string | null,
+) {
   return (
-    state.templates.flatMap((t) => t.mappings).find((f) => f.key === key)
-      ?.label ??
+    state.templates
+      .find((template) => template.categoryId === categoryId)
+      ?.mappings.find((f) => f.key === key)?.label ??
     state.sources
       .flatMap((s) => s.observation.fields)
       .find((f) => f.key === key)?.name ??

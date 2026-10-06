@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { loadAssetViewer } from "../viewer/load-viewer.js";
 import { Boxes, Grid2X2, List, Search } from "lucide-react";
-import type { LibraryModel } from "../../shared/contracts.js";
+import { useSourceAvailability } from "./useSourceAvailability.js";
 import { IfcWorkerClient } from "../ifc/client.js";
 import { libraryApi, type LibraryApi } from "../library/api.js";
 import type { LibraryWorker } from "../library/useLibrary.js";
@@ -48,7 +48,11 @@ export function CatalogWorkspace({
     [editor, setEditor] = useState<
       "edit" | "merge" | "split" | "geometry" | null
     >(null);
-  const [models, setModels] = useState<LibraryModel[]>([]);
+  const { availability, retry: retryAvailability } = useSourceAvailability(
+    sourceApi,
+    workspace,
+    state?.revision,
+  );
   const dependencies = useMemo(
     () => ({ api: sourceApi, createWorker }),
     [sourceApi, createWorker],
@@ -58,18 +62,6 @@ export function CatalogWorkspace({
     sourceApi,
     (snapshot) => catalog.execute({ kind: "import", snapshot }),
   );
-  useEffect(() => {
-    let active = true;
-    void sourceApi
-      .list()
-      .then((found) => {
-        if (active) setModels(found);
-      })
-      .catch(() => {});
-    return () => {
-      active = false;
-    };
-  }, [sourceApi, workspace, state?.revision]);
   const query = search.toLocaleLowerCase().trim();
   const entries =
     state?.entries.filter(
@@ -128,6 +120,7 @@ export function CatalogWorkspace({
         loadViewer={loadViewer}
         pending={catalog.pending}
         modal={modal}
+        error={catalog.error}
         onClose={() => setSelected("")}
         onEdit={() => setEditor("edit")}
         onReview={setEditor}
@@ -167,6 +160,14 @@ export function CatalogWorkspace({
         onCategory={setCategory}
       />
       <main id="library-content" className="curated-content">
+        {availability.kind === "failed" && (
+          <div className="inline-message" role="alert">
+            Source availability could not be checked: {availability.message}
+            <button onClick={retryAvailability}>
+              Retry source availability
+            </button>
+          </div>
+        )}
         {catalog.error && (
           <div className="inline-message" role="alert">
             {catalog.error}
@@ -324,7 +325,7 @@ export function CatalogWorkspace({
               <DefinitionCards
                 state={state}
                 entries={entries}
-                models={models}
+                availability={availability}
                 selected={selected}
                 checked={checked}
                 mode={mode}
