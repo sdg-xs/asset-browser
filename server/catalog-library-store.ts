@@ -170,6 +170,7 @@ export class CatalogLibraryStore {
         const references = changedReferences(
           entry,
           command.confirmedSourceReferences,
+          command.sourceRebindings,
         );
         const requirements = references.map((reference) => {
           const source = this.state.sources.find(

@@ -130,6 +130,13 @@ export const catalogLibrarySchema = z.object({
 });
 export type CatalogLibrary = z.infer<typeof catalogLibrarySchema>;
 const expectedRevision = z.number().int().nonnegative();
+export const sourceRebindingSchema = z.object({
+  sourceId: id,
+  fromFingerprint: id,
+  toFingerprint: id,
+  occurrenceIds: occurrenceIds.min(1),
+});
+export type SourceRebinding = z.infer<typeof sourceRebindingSchema>;
 export const libraryCommandSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("import"),
@@ -142,6 +149,7 @@ export const libraryCommandSchema = z.discriminatedUnion("kind", [
     entryId: id,
     definition: editableDefinitionSchema,
     confirmedSourceReferences: z.array(sourceReferenceSchema).optional(),
+    sourceRebindings: z.array(sourceRebindingSchema).optional(),
   }),
   ...(["approve", "archive", "restore"] as const).map((kind) =>
     z.object({

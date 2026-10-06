@@ -457,6 +457,19 @@ describe("persistent curated catalog API", () => {
     const old = merged.sourceReferences[0],
       visible = merged.sourceReferences[1];
     if (!old || !visible) throw Error("references");
+    // A merged definition can retain two partitions from different revisions of B.
+    visible.occurrenceIds = [1];
+    const historical = {
+      ...visible,
+      fingerprint: "prior-B-revision",
+      occurrenceIds: [2],
+    };
+    merged.sourceReferences.push(historical);
+    await writeFile(
+      join(fixture.dataRoot, "catalog-library.json"),
+      JSON.stringify(state),
+    );
+    app = await createApp(fixture);
     await request(app).delete(`/api/models/${snapshot.modelId}`).expect(204);
     state = catalogLibrarySchema.parse(
       (
@@ -465,20 +478,54 @@ describe("persistent curated catalog API", () => {
           expectedRevision: state.revision,
           entryId: merged.id,
           definition: merged.definition,
-          confirmedSourceReferences: [visible, old],
+          confirmedSourceReferences: [visible, old, historical],
         })
       ).body,
     );
-    expect(state.entries[0]?.sourceReferences).toEqual([visible, old]);
+    expect(state.entries[0]?.sourceReferences).toEqual([
+      visible,
+      old,
+      historical,
+    ]);
     app = await createApp(fixture);
-    expect((await read()).entries[0]?.sourceReferences).toEqual([visible, old]);
+    expect((await read()).entries[0]?.sourceReferences).toEqual([
+      visible,
+      old,
+      historical,
+    ]);
+    const consolidated = { ...visible, occurrenceIds: [1, 2] };
+    state = catalogLibrarySchema.parse(
+      (
+        await command({
+          kind: "edit",
+          expectedRevision: state.revision,
+          entryId: merged.id,
+          definition: merged.definition,
+          confirmedSourceReferences: [consolidated, old],
+          sourceRebindings: [
+            {
+              sourceId: historical.sourceId,
+              fromFingerprint: historical.fingerprint,
+              toFingerprint: visible.fingerprint,
+              occurrenceIds: [2],
+            },
+          ],
+        })
+      ).body,
+    );
+    expect(state.entries[0]?.sourceReferences).toEqual([consolidated, old]);
+    app = await createApp(fixture);
+    expect((await read()).entries[0]?.sourceReferences).toEqual([
+      consolidated,
+      old,
+    ]);
     await command(
       {
         kind: "edit",
         expectedRevision: state.revision,
         entryId: merged.id,
         definition: merged.definition,
-        confirmedSourceReferences: [visible, { ...old, equivalent: true }],
+        confirmedSourceReferences: [consolidated, { ...old, equivalent: true }],
       },
       404,
     );

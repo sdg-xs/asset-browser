@@ -322,3 +322,158 @@ it("enriches legacy same-fingerprint analysis once, then remains idempotent", ()
   );
   expect(command(state, { kind: "import", snapshot: updated })).toBe(state);
 });
+
+it("rejects ordinary text mapped as a dimensional number", () => {
+  const snap = snapshot();
+  for (const field of snap.types[0]?.fields ?? []) {
+    field.measure = "IFCLABEL";
+    field.unit = null;
+    field.values = [
+      {
+        rawValue: "oak",
+        normalized: { kind: "text", value: "oak", unit: null },
+        occurrenceIds: [1, 2],
+      },
+    ];
+  }
+  const state = command(emptyCatalogLibrary(), {
+    kind: "import",
+    snapshot: snap,
+  });
+  expect(() => mapWidth(state)).toThrow(/kind|unit/i);
+});
+it("migrates legacy copied measured overrides without inventing verified interpretation", async () => {
+  const { migrateCatalog } = await import("../shared/catalog-publication.js");
+  let state = emptyCatalogLibrary();
+  for (const model of ["a", "b"]) {
+    const snap = snapshot(model);
+    for (const field of snap.types[0]?.fields ?? []) {
+      field.unit = null;
+      field.values = [
+        {
+          rawValue: "800",
+          normalized: { kind: "text", value: "800", unit: null },
+          occurrenceIds: [1, 2],
+        },
+      ];
+    }
+    state = command(state, { kind: "import", snapshot: snap });
+  }
+  for (const entry of state.entries)
+    entry.definition.specifications["A/Width"] = {
+      kind: "text",
+      value: "800",
+      unit: null,
+    };
+  state = migrateCatalog(state);
+  expect(first(state).definition.specifications["A/Width"]).toMatchObject({
+    value: "800",
+    unresolvedMeasure: true,
+  });
+  expect(duplicateCandidates(state, first(state).id)[0]?.confidence).toBe(
+    "name",
+  );
+  expect(migrateCatalog(structuredClone(state))).toEqual(state);
+  for (const entry of state.entries)
+    entry.definition.specifications["A/Width"] = {
+      kind: "number",
+      value: 0.8,
+      unit: "m",
+    };
+  expect(duplicateCandidates(state, first(state).id)[0]?.confidence).toBe(
+    "specifications",
+  );
+});
+it("reviews merged current and historical partitions of one source without losing either revision", () => {
+  let state = mapWidth(
+    command(emptyCatalogLibrary(), {
+      kind: "import",
+      snapshot: snapshot("a", [0.6, 0.8]),
+    }),
+  );
+  state = applyLibraryCommand(state, {
+    kind: "split",
+    expectedRevision: state.revision,
+    entryId: first(state).id,
+    variantFieldKeys: ["width"],
+  });
+  const variants = state.entries.filter((e) => e.status === "draft");
+  const a = variants[0],
+    b = variants[1];
+  if (!a || !b) throw Error("variants");
+  state = command(state, {
+    kind: "import",
+    snapshot: { ...snapshot("a", [0.6, 0.8]), fingerprint: "v2" },
+  });
+  state = applyLibraryCommand(state, {
+    kind: "edit",
+    expectedRevision: state.revision,
+    entryId: a.id,
+    definition: a.definition,
+    confirmedSourceReferences: a.sourceReferences.map((r) => ({
+      ...r,
+      fingerprint: "v2",
+    })),
+  });
+  state = applyLibraryCommand(state, {
+    kind: "merge",
+    expectedRevision: state.revision,
+    targetId: a.id,
+    absorbedIds: [b.id],
+  });
+  const merged = state.entries.find((e) => e.id === a.id);
+  if (!merged) throw Error("merged");
+  const refs = structuredClone(merged.sourceReferences);
+  state = applyLibraryCommand(state, {
+    kind: "edit",
+    expectedRevision: state.revision,
+    entryId: a.id,
+    definition: merged.definition,
+    confirmedSourceReferences: refs,
+  });
+  expect(state.entries.find((e) => e.id === a.id)?.sourceReferences).toEqual(
+    refs,
+  );
+  expect(refs.map((r) => r.fingerprint)).toEqual(["v2", "v1"]);
+  const current = refs[0],
+    historical = refs[1];
+  if (!current || !historical) throw Error("refs");
+  const consolidated = applyLibraryCommand(state, {
+    kind: "edit",
+    expectedRevision: state.revision,
+    entryId: a.id,
+    definition: merged.definition,
+    confirmedSourceReferences: [
+      {
+        ...current,
+        occurrenceIds: [...current.occurrenceIds, ...historical.occurrenceIds],
+      },
+    ],
+    sourceRebindings: [
+      {
+        sourceId: historical.sourceId,
+        fromFingerprint: historical.fingerprint,
+        toFingerprint: current.fingerprint,
+        occurrenceIds: historical.occurrenceIds,
+      },
+    ],
+  });
+  expect(
+    consolidated.entries.find((e) => e.id === a.id)?.sourceReferences,
+  ).toEqual([
+    {
+      ...current,
+      occurrenceIds: [...current.occurrenceIds, ...historical.occurrenceIds],
+    },
+  ]);
+
+  expect(() =>
+    applyLibraryCommand(state, {
+      kind: "edit",
+      expectedRevision: state.revision,
+      entryId: a.id,
+      definition: merged.definition,
+      confirmedSourceReferences: refs.slice(0, 1),
+    }),
+  ).toThrow(/historical|retain/i);
+});

@@ -73,14 +73,15 @@ function CategoryForm({
   );
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
-  const [reconcile, setReconcile] = useState(false);
+  const [reconcile, setReconcile] = useState<number | null>(null);
   useEffect(() => {
-    if (!reconcile) return;
+    if (reconcile === null || state.revision <= reconcile) return;
     const saved = state.categories.find((c) => c.id === id);
     if (saved) {
       setName(saved.name);
       setAliases(saved.aliases.join(", "));
-      setReconcile(false);
+      setReconcile(null);
+      setNotice("Category and aliases saved.");
     }
   }, [state, id, reconcile]);
   const suggestions = (template?.suggestions ?? []).filter(
@@ -129,7 +130,10 @@ function CategoryForm({
       setNotice("Specification template saved.");
   };
   return (
-    <fieldset className="category-fields" disabled={pending}>
+    <fieldset
+      className="category-fields"
+      disabled={pending || reconcile !== null}
+    >
       <form
         className="category-form"
         onSubmit={(e) => {
@@ -144,8 +148,7 @@ function CategoryForm({
               .filter(Boolean),
           }).then((ok) => {
             if (ok) {
-              setNotice("Category and aliases saved.");
-              setReconcile(true);
+              setReconcile(state.revision);
             }
           });
         }}

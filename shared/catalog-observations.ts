@@ -237,7 +237,7 @@ export function hasUnnormalizedMeasure(
 ): boolean {
   const override = entry.definition.specifications[key];
   if (override?.kind === "text" && override.unresolvedMeasure) return true;
-  if (Object.hasOwn(entry.definition.specifications, key)) return false;
+  if (override && override.kind !== "text") return false;
   const keys = parameterKeys(state, entry, key);
   return entry.sourceReferences.some(
     (r) =>
@@ -248,6 +248,10 @@ export function hasUnnormalizedMeasure(
             (v) =>
               v.occurrenceIds.some((id) => r.occurrenceIds.includes(id)) &&
               v.normalized.kind === "text" &&
+              (!override ||
+                (override.kind === "text" &&
+                  override.value === v.normalized.value &&
+                  override.unit === v.normalized.unit)) &&
               (v.normalized.unit !== null ||
                 /MEASURE|Mixed IFC measures/i.test(
                   v.sourceMeasure ?? f.measure,

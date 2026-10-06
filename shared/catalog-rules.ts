@@ -206,11 +206,23 @@ export function applyLibraryCommand(
         )
       )
         throw new CatalogDomainError("NOT_FOUND", "Category not found.");
+      if (
+        command.sourceRebindings?.length &&
+        !command.confirmedSourceReferences
+      )
+        throw new CatalogDomainError(
+          "INVALID_COMMAND",
+          "Source rebindings require confirmed references.",
+        );
       entry.definition = command.definition;
       if (command.confirmedSourceReferences) {
         validateReferences(
           next,
-          changedReferences(entry, command.confirmedSourceReferences),
+          changedReferences(
+            entry,
+            command.confirmedSourceReferences,
+            command.sourceRebindings,
+          ),
         );
         entry.sourceReferences = command.confirmedSourceReferences;
         entry.reviewFlags = entry.sourceReferences.some(
@@ -335,20 +347,30 @@ export function applyLibraryCommand(
           .filter((s) => sourceIds.has(s.id))
           .flatMap((s) => s.observation.fields)
           .filter((f) => keys.includes(f.key));
-        const numbers = observations
-          .flatMap((f) => f.values)
-          .flatMap((v) =>
-            v.normalized.kind === "number" ? [v.normalized] : [],
-          );
-        if (
-          numbers.some(
-            (v) =>
-              mapping.dataKind !== "number" || v.unit !== mapping.canonicalUnit,
-          )
-        )
+        const incompatible = observations.some((field) =>
+          field.values.some(({ normalized: value, sourceMeasure }) => {
+            if (value.kind === "missing") return false;
+            if (value.kind === "number")
+              return (
+                mapping.dataKind !== "number" ||
+                value.unit !== mapping.canonicalUnit
+              );
+            const unresolved =
+              value.unresolvedMeasure ||
+              value.unit !== null ||
+              /MEASURE|Mixed IFC measures/i.test(
+                sourceMeasure ?? field.measure,
+              );
+            return (
+              !unresolved &&
+              (mapping.dataKind !== "text" || mapping.canonicalUnit !== null)
+            );
+          }),
+        );
+        if (incompatible)
           throw new CatalogDomainError(
             "INVALID_COMMAND",
-            "Mapped numeric properties must use their actual normalized kind and unit.",
+            "Mapped properties must use their actual normalized kind and unit.",
           );
         for (const entry of next.entries.filter(
           (e) => e.definition.categoryId === command.categoryId,

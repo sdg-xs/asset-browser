@@ -1406,7 +1406,7 @@ it("selects an available preferred source while preserving its hidden historical
   );
   fireEvent.click(screen.getByRole("button", { name: "Preferred geometry" }));
   fireEvent.change(screen.getByLabelText("Preferred source"), {
-    target: { value: visible.sourceId },
+    target: { value: JSON.stringify([visible.sourceId, visible.fingerprint]) },
   });
   fireEvent.click(
     screen.getByRole("button", { name: "Save preferred geometry" }),
@@ -1453,4 +1453,63 @@ it("assigns differently named source properties to one category parameter", asyn
   expect(mapping.key).not.toBe("width");
   expect(mapping.sourceKeys).toEqual(["width", "overall"]);
   expect(f.getState().templates[0]?.mappings).toHaveLength(1);
+});
+
+it("keeps current and historical source revision subsets distinct in geometry review", async () => {
+  const f = fixture();
+  const state = f.getState();
+  const entry = required(state.entries[0]);
+  const source = required(state.sources[0]);
+  source.fingerprint = "v2";
+  source.observation.occurrenceIds = [1, 2, 3];
+  const old = required(entry.sourceReferences[0]);
+  entry.sourceReferences = [
+    { ...old, fingerprint: "v1", occurrenceIds: [2] },
+    { ...old, fingerprint: "v2", occurrenceIds: [1] },
+  ];
+  render(<CatalogWorkspace catalogApi={f.api} sourceApi={f.sources} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Needs review" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Inspect Cabinet" }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Preferred geometry" }));
+  fireEvent.change(screen.getByLabelText("Preferred source"), {
+    target: { value: JSON.stringify([old.sourceId, "v2"]) },
+  });
+  expect(
+    screen.getByLabelText<HTMLSelectElement>("Preferred occurrence").value,
+  ).toBe("1");
+  fireEvent.click(
+    screen.getByRole("checkbox", {
+      name: "I reviewed the current source revision and its occurrence membership",
+    }),
+  );
+  fireEvent.click(
+    screen.getByRole("button", { name: "Save preferred geometry" }),
+  );
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(f.getState().entries[0]?.sourceReferences).toEqual([
+    { ...old, fingerprint: "v2", occurrenceIds: [1] },
+    { ...old, fingerprint: "v1", occurrenceIds: [2] },
+  ]);
+
+  fireEvent.click(screen.getByRole("button", { name: "Preferred geometry" }));
+  fireEvent.change(screen.getByLabelText("Preferred source"), {
+    target: { value: JSON.stringify([old.sourceId, "v1"]) },
+  });
+  fireEvent.click(
+    screen.getByRole("checkbox", {
+      name: "I reviewed the current source revision and its occurrence membership",
+    }),
+  );
+  fireEvent.click(
+    screen.getByRole("checkbox", { name: "Include occurrence #2" }),
+  );
+  fireEvent.click(
+    screen.getByRole("button", { name: "Save preferred geometry" }),
+  );
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(f.getState().entries[0]?.sourceReferences).toEqual([
+    { ...old, fingerprint: "v2", occurrenceIds: [2, 1] },
+  ]);
 });

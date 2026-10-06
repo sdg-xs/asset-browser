@@ -1,3 +1,7 @@
+import {
+  referenceKey,
+  consolidateReferences,
+} from "../../shared/catalog-references.js";
 import { useMemo, useState } from "react";
 import type {
   CatalogLibrary,
@@ -34,18 +38,21 @@ export function ReviewDialog({
 }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [preferred, setPreferred] = useState(
-    entry.sourceReferences[0]?.sourceId ?? "",
+    entry.sourceReferences[0] ? referenceKey(entry.sourceReferences[0]) : "",
   );
   const [occurrence, setOccurrence] = useState(
     String(entry.sourceReferences[0]?.occurrenceIds[0] ?? ""),
   );
   const [equivalents, setEquivalents] = useState(
-    entry.sourceReferences.filter((r) => r.equivalent).map((r) => r.sourceId),
+    entry.sourceReferences.filter((r) => r.equivalent).map(referenceKey),
   );
   const [reviewedSources, setReviewedSources] = useState<string[]>([]);
   const [subsets, setSubsets] = useState<Record<string, number[]>>(() =>
     Object.fromEntries(
-      entry.sourceReferences.map((r) => [r.sourceId, [...r.occurrenceIds]]),
+      entry.sourceReferences.map((r) => [
+        referenceKey(r),
+        [...r.occurrenceIds],
+      ]),
     ),
   );
   const rebind = reviewedSources.includes(preferred);
@@ -68,9 +75,11 @@ export function ReviewDialog({
     [mode, state, entry.id],
   );
   const preferredRef = entry.sourceReferences.find(
-    (r) => r.sourceId === preferred,
+    (r) => referenceKey(r) === preferred,
   );
-  const preferredSource = state.sources.find((s) => s.id === preferred);
+  const preferredSource = state.sources.find(
+    (s) => s.id === preferredRef?.sourceId,
+  );
   const occurrences = subsets[preferred] ?? preferredRef?.occurrenceIds ?? [];
   return (
     <Dialog
@@ -234,10 +243,7 @@ export function ReviewDialog({
               onChange={(e) => {
                 setPreferred(e.target.value);
                 const ref = entry.sourceReferences.find(
-                  (r) => r.sourceId === e.target.value,
-                );
-                const currentSource = state.sources.find(
-                  (source) => source.id === e.target.value,
+                  (r) => referenceKey(r) === e.target.value,
                 );
                 setOccurrence(
                   String(
@@ -247,8 +253,9 @@ export function ReviewDialog({
               }}
             >
               {entry.sourceReferences.map((r) => (
-                <option key={r.sourceId} value={r.sourceId}>
-                  {state.sources.find((s) => s.id === r.sourceId)?.sourceName}
+                <option key={referenceKey(r)} value={referenceKey(r)}>
+                  {state.sources.find((s) => s.id === r.sourceId)?.sourceName} ·{" "}
+                  {r.fingerprint}
                 </option>
               ))}
             </select>
@@ -331,58 +338,78 @@ export function ReviewDialog({
             </select>
           </label>
           {entry.sourceReferences
-            .filter((r) => r.sourceId !== preferred)
+            .filter((r) => referenceKey(r) !== preferred)
             .map((r) => (
-              <label className="check" key={r.sourceId}>
+              <label className="check" key={referenceKey(r)}>
                 <input
                   type="checkbox"
-                  checked={equivalents.includes(r.sourceId)}
+                  checked={equivalents.includes(referenceKey(r))}
                   onChange={(e) =>
                     setEquivalents((all) =>
                       e.target.checked
-                        ? [...all, r.sourceId]
-                        : all.filter((id) => id !== r.sourceId),
+                        ? [...all, referenceKey(r)]
+                        : all.filter((id) => id !== referenceKey(r)),
                     )
                   }
                 />
                 Equivalent geometry:{" "}
-                {state.sources.find((s) => s.id === r.sourceId)?.sourceName}
+                {state.sources.find((s) => s.id === r.sourceId)?.sourceName} ·{" "}
+                {r.fingerprint}
               </label>
             ))}
           <button
             disabled={pending || !occurrence}
             className="primary"
             onClick={() => {
-              const references = entry.sourceReferences
-                .map((r) => {
-                  const source = state.sources.find((s) => s.id === r.sourceId);
-                  const ids = subsets[r.sourceId] ?? r.occurrenceIds;
-                  return {
-                    ...r,
-                    fingerprint:
-                      reviewedSources.includes(r.sourceId) && source
-                        ? source.fingerprint
-                        : r.fingerprint,
-                    equivalent: equivalents.includes(r.sourceId),
-                    occurrenceIds:
-                      r.sourceId === preferred
-                        ? [
-                            Number(occurrence),
-                            ...ids.filter((id) => id !== Number(occurrence)),
-                          ]
-                        : ids,
-                  };
-                })
-                .sort(
-                  (a, b) =>
-                    Number(b.sourceId === preferred) -
-                    Number(a.sourceId === preferred),
-                );
+              const references = consolidateReferences(
+                [...entry.sourceReferences]
+                  .sort(
+                    (a, b) =>
+                      Number(referenceKey(b) === preferred) -
+                      Number(referenceKey(a) === preferred),
+                  )
+                  .map((r) => {
+                    const source = state.sources.find(
+                      (s) => s.id === r.sourceId,
+                    );
+                    const ids = subsets[referenceKey(r)] ?? r.occurrenceIds;
+                    return {
+                      ...r,
+                      fingerprint:
+                        reviewedSources.includes(referenceKey(r)) && source
+                          ? source.fingerprint
+                          : r.fingerprint,
+                      equivalent: equivalents.includes(referenceKey(r)),
+                      occurrenceIds:
+                        referenceKey(r) === preferred
+                          ? [
+                              Number(occurrence),
+                              ...ids.filter((id) => id !== Number(occurrence)),
+                            ]
+                          : ids,
+                    };
+                  }),
+              );
               finish({
                 kind: "edit",
                 entryId: entry.id,
                 definition: entry.definition,
                 confirmedSourceReferences: references,
+                sourceRebindings: entry.sourceReferences.flatMap((r) => {
+                  const source = state.sources.find((s) => s.id === r.sourceId);
+                  return reviewedSources.includes(referenceKey(r)) &&
+                    source &&
+                    source.fingerprint !== r.fingerprint
+                    ? [
+                        {
+                          sourceId: r.sourceId,
+                          fromFingerprint: r.fingerprint,
+                          toFingerprint: source.fingerprint,
+                          occurrenceIds: subsets[referenceKey(r)] ?? [],
+                        },
+                      ]
+                    : [];
+                }),
               });
             }}
           >

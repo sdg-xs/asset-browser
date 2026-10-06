@@ -1,3 +1,4 @@
+import { referenceKey } from "../../shared/catalog-references.js";
 import { useEffect, useRef } from "react";
 import type {
   CatalogLibrary,
@@ -197,12 +198,16 @@ export function DefinitionInspector({
           {entry.sourceReferences.map((r) => {
             const source = state.sources.find((s) => s.id === r.sourceId);
             return (
-              <section key={r.sourceId}>
+              <section key={referenceKey(r)}>
                 <h4>{source?.sourceName}</h4>
                 <p>
                   {source?.observation.name} · {source?.observation.ifcClass}
                 </p>
                 <p>Type: {source?.observation.typeGlobalId}</p>
+                <p>
+                  Referenced revision: {r.fingerprint}. Current observations:{" "}
+                  {source?.fingerprint}.
+                </p>
                 <p>Occurrences: {r.occurrenceIds.join(", ")}</p>
                 {source?.observation.fields.map((f) => (
                   <p key={f.key}>

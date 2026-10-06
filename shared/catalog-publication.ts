@@ -2,6 +2,7 @@ import type { CatalogLibrary, LibraryEntry } from "./catalog-library.js";
 import {
   effectiveSpecifications,
   parameterLabel,
+  hasUnnormalizedMeasure,
 } from "./catalog-observations.js";
 
 export function acceptPublication(
@@ -36,6 +37,10 @@ export function migrateCatalog(state: CatalogLibrary): CatalogLibrary {
         )
           value.normalized.unresolvedMeasure = true;
       }
+  for (const entry of state.entries)
+    for (const [key, value] of Object.entries(entry.definition.specifications))
+      if (value.kind === "text" && hasUnnormalizedMeasure(state, entry, key))
+        value.unresolvedMeasure = true;
   for (const entry of state.entries)
     if (entry.status === "approved" && !entry.publication) {
       const stale = entry.sourceReferences.some((r) => {
