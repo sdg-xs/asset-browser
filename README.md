@@ -2,6 +2,8 @@
 
 Browse real IFC asset types, filter by category, and inspect read-only properties and representative 3D geometry. The local service discovers existing source files, retains uploads, and persists catalog indexes and model visibility. IFC parsing and geometry extraction run in a browser worker.
 
+For project handoff or resumed development, start with [project context](docs/project-context.md). Requirements, architecture and verification evidence are linked there.
+
 Use Node.js 24 or newer. Install dependencies, then start the app:
 
 ```powershell

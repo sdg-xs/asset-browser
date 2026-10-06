@@ -4,7 +4,7 @@ MVP scope agreed by the user on 2026-10-05. This document supersedes the initial
 
 ## Agreed architecture
 
-A browser UI performs IFC processing, asset-type organization, property inspection, and 3D viewing using That Open Engine/Fragments. A minimal local file service lists existing IFC sources, stores uploads separately, serves model files, and persists library state.
+A React browser UI performs asset-type organization and property inspection. A dedicated web-ifc worker parses IFC and extracts representative element geometry through `GetFlatMesh`. That Open Components provides the viewer world and camera; Three.js renders the extracted meshes. The MVP does not convert the full building into Fragments. A minimal local file service lists existing IFC sources, stores uploads separately, serves model files, and persists library state.
 
 ```mermaid
 flowchart LR
@@ -37,11 +37,11 @@ Read the existing `PROPERTIES/<CODE>/IFC/` sources. Store new uploads in a separ
 
 The local service should bind to the local computer and expose configured library operations rather than arbitrary filesystem access. Validate upload names and destinations. These are implementation recommendations for the chosen local architecture, not an added enterprise authentication project.
 
-## Feasibility before building the full UI
+## Verified feasibility and limits
 
-Use BS19, approximately 117 MiB, as the initial processing and rendering target. Its sampled category-to-element-to-type relationships were verified; browser conversion and preview performance were not.
+BS19, approximately 117 MiB, is the verified processing and rendering target. Chrome runs produced 1,019 types and 107 categories. Its Airthings sensor preview rendered two meshes and 954 triangles with corresponding properties, in both the side inspector and centered dialog. Measured indexing runs took 13–21 seconds on the development computer. See [verification.md](verification.md) for test revisions, memory samples, screenshots and limitations.
 
-Measure successful parsing/conversion, representative geometry extraction, time to usable preview, and browser memory behavior on the target computer. Verify that the viewer can inspect one type without forcing the user to navigate the whole building model.
+Cached catalogs display immediately, but first inspection still opens and parses the source in the worker. Each preview shows one representative occurrence of the selected type. The larger HG62 model and arbitrary IFC exporters remain unverified.
 
 If browser processing is unsuitable, bring the measured result back before changing the agreed architecture. Moving heavy processing into the local service would be a scope/design adjustment. Do not assume BS19 or the larger HG62 will work merely because their metadata relationships are valid.
 
