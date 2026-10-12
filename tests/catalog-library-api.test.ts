@@ -13,11 +13,36 @@ import {
 import { emptyIndex, libraryFixture } from "./library-fixtures.js";
 import { CatalogLibraryStore } from "../server/catalog-library-store.js";
 import { LibraryStore } from "../server/library-store.js";
+import { geometryRecordSchema } from "../shared/mesh-geometry.js";
 
 describe("persistent curated catalog API", () => {
   let fixture: Awaited<ReturnType<typeof libraryFixture>>;
   let app: Awaited<ReturnType<typeof createApp>>;
   let snapshot: LibrarySnapshot;
+  it("persists category IFC Class and System values and allows clearing them", async () => {
+    const store = await CatalogLibraryStore.create({ dataRoot: fixture.dataRoot });
+    const initial = await store.read();
+    await store.execute({ kind: "category", expectedRevision: initial.revision, id: "fire-category", name: "Smoke Detector", aliases: [],
+      ifcClass: " IFCALARM ", system: " 5420 Fire Alarm Systems " });
+    const reopened = await CatalogLibraryStore.create({ dataRoot: fixture.dataRoot });
+    const saved = await reopened.read();
+    expect(saved.categories.find(category => category.id === "fire-category")).toMatchObject({ ifcClass: "IFCALARM", system: "5420 Fire Alarm Systems" });
+    const renamed = await reopened.execute({ kind: "category", expectedRevision: saved.revision, id: "fire-category", name: "Smoke detectors", aliases: [] });
+    expect(renamed.categories.find(category => category.id === "fire-category")).toMatchObject({ ifcClass: "IFCALARM", system: "5420 Fire Alarm Systems" });
+    const cleared = await reopened.execute({ kind: "category", expectedRevision: renamed.revision, id: "fire-category", name: "Smoke detectors", aliases: ["Smoke Detector"], ifcClass: "", system: "" });
+    expect(cleared.categories.find(category => category.id === "fire-category")).toMatchObject({ ifcClass: "", system: "" });
+  });
+  it("persists category upload defaults and preserves them when only labels are updated", async () => {
+    const store = await CatalogLibraryStore.create({ dataRoot: fixture.dataRoot });
+    const defaults = { name: "asset-name", ifcClass: "ifc-class", system: '["Asset","System"]', fdvuDocumentationUrl: "" };
+    const initial = await store.read();
+    await store.execute({ kind: "category", expectedRevision: initial.revision, id: "mapped-category", name: "Sensors", aliases: [], uploadMappings: defaults });
+    const reopened = await CatalogLibraryStore.create({ dataRoot: fixture.dataRoot });
+    const saved = await reopened.read();
+    expect(saved.categories.find(category => category.id === "mapped-category")?.uploadMappings).toEqual(defaults);
+    const renamed = await reopened.execute({ kind: "category", expectedRevision: saved.revision, id: "mapped-category", name: "Detectors", aliases: [] });
+    expect(renamed.categories.find(category => category.id === "mapped-category")?.uploadMappings).toEqual(defaults);
+  });
   beforeEach(async () => {
     fixture = await libraryFixture();
     app = await createApp(fixture);
@@ -78,6 +103,71 @@ describe("persistent curated catalog API", () => {
       (await command({ kind: "import", expectedRevision: 0, snapshot })).body,
     );
   }
+  it("keeps FDVU documentation optional, persists its link and rejects non-web URLs", async () => {
+    const state = await imported();
+    const entry = state.entries[0];
+    if (!entry) throw Error("Missing draft");
+    expect(entry.definition.fdvuDocumentationUrl ?? "").toBe("");
+    const saved = catalogLibrarySchema.parse((await command({ kind: "edit", expectedRevision: state.revision,
+      entryId: entry.id, definition: { ...entry.definition, fdvuDocumentationUrl: "https://example.com/fdvu.pdf" } })).body);
+    app = await createApp(fixture);
+    expect((await read()).entries[0]?.definition.fdvuDocumentationUrl).toBe("https://example.com/fdvu.pdf");
+    for (const url of ["javascript:alert(1)", "file:///C:/fdvu.pdf", "not a link"]) {
+      await command({ kind: "edit", expectedRevision: saved.revision, entryId: entry.id,
+        definition: { ...entry.definition, fdvuDocumentationUrl: url } }, 400);
+    }
+    expect((await read()).revision).toBe(saved.revision);
+    const cleared = catalogLibrarySchema.parse((await command({ kind: "edit", expectedRevision: saved.revision,
+      entryId: entry.id, definition: { ...entry.definition, fdvuDocumentationUrl: "" } })).body);
+    await command({ kind: "approve", expectedRevision: cleared.revision, entryIds: [entry.id] });
+  });
+  it("persists colored mesh uploads, creates review drafts and keeps approved metadata during updates", async () => {
+    const geometry = { meshes: [{ positions: [0, 0, 0, 1, 0, 0, 0, 1, 0], normals: [0, 0, 1, 0, 0, 1, 0, 0, 1], indices: [0, 1, 2],
+      transform: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], color: [1, 0, 0, 0.5] }] };
+    const mesh = geometryRecordSchema.parse((await request(app).post("/api/geometry").send({ name: "Cabinet.obj", format: "obj", geometry }).expect(201)).body);
+    const geometryReference = { kind: "mesh", geometryId: mesh.id } satisfies NonNullable<CatalogLibrary["entries"][number]["geometryReference"]>;
+    const state = catalogLibrarySchema.parse((await command({ kind: "create-asset", expectedRevision: 0, name: "Mesh cabinet", geometryReference,
+      details: { name: "Mesh cabinet", ifcClass: "IFCFURNITURETYPE", system: "Furniture", fdvuDocumentationUrl: "https://example.com/fdvu.pdf" } })).body);
+    expect(state.entries[0]).toMatchObject({ status: "draft", sourceReferences: [], geometryReference, definition: { name: "Mesh cabinet", categoryId: null } });
+    expect(state.entries[0]?.definition.specifications.System).toEqual({ kind: "text", value: "Furniture", unit: null });
+    const draft = state.entries[0];
+    if (!draft) throw Error("Missing draft");
+    await command({ kind: "approve", expectedRevision: state.revision, entryIds: [draft.id] }, 400);
+    expect((await read()).entries[0]?.status).toBe("draft");
+    const importedState = catalogLibrarySchema.parse((await command({ kind: "import", expectedRevision: state.revision, snapshot })).body);
+    const original = importedState.entries[1];
+    if (!original) throw Error("Missing imported entry");
+    const approved = catalogLibrarySchema.parse((await command({ kind: "approve", expectedRevision: importedState.revision, entryIds: [original.id] })).body);
+    const updated = catalogLibrarySchema.parse((await command({ kind: "update-geometry", expectedRevision: approved.revision, entryId: original.id, geometryReference })).body);
+    expect(updated.entries[1]).toEqual({ ...approved.entries[1], geometryReference });
+    app = await createApp(fixture);
+    expect(await read()).toEqual(updated);
+    const reopened = geometryRecordSchema.parse((await request(app).get(`/api/geometry/${mesh.id}`).expect(200)).body);
+    expect(reopened.geometry).toEqual(geometry);
+    await command({ kind: "update-geometry", expectedRevision: updated.revision, entryId: original.id,
+      geometryReference: { kind: "mesh", geometryId: "00000000-0000-4000-8000-000000000099" } }, 404);
+    await request(app).post("/api/geometry").send({ name: "bad.obj", format: "obj", geometry: { meshes: [{ ...geometry.meshes[0], indices: [0, 1, 999] }] } }).expect(400);
+    expect((await read()).revision).toBe(updated.revision);
+  });
+  it("validates and persists replacement geometry without changing the approved definition", async () => {
+    const state = await imported();
+    const original = state.entries[0];
+    if (!original) throw Error("Missing entry");
+    const approved = catalogLibrarySchema.parse((await command({ kind: "approve", expectedRevision: state.revision, entryIds: [original.id] })).body);
+    await request(app).put(`/api/models/${snapshot.modelId}/creation-index`).send({
+      schemaVersion: 1, modelId: snapshot.modelId, fingerprint: snapshot.fingerprint,
+      candidates: snapshot.types.map(type => ({ key: `type:${type.typeGlobalId}`, identity: { kind: "type", globalId: type.typeGlobalId }, name: type.name, ifcClass: type.ifcClass, categories: type.categories, classificationIssues: [], occurrenceIds: type.occurrenceIds, representativeId: type.occurrenceIds[0] })),
+      stats: { elements: 3, candidates: 2, classified: 2, unclassified: 0, untyped: 0 },
+    }).expect(200);
+    const geometryReference = { modelId: snapshot.modelId, fingerprint: snapshot.fingerprint, candidateKey: "type:type-a", occurrenceId: 1 };
+    await command({ kind: "update-geometry", expectedRevision: approved.revision, entryId: original.id, geometryReference: { ...geometryReference, occurrenceId: 99 } }, 400);
+    expect((await read()).revision).toBe(approved.revision);
+    const updated = catalogLibrarySchema.parse((await command({ kind: "update-geometry", expectedRevision: approved.revision, entryId: original.id, geometryReference })).body);
+    expect(updated.entries[0]).toEqual({ ...approved.entries[0], geometryReference });
+    expect(updated.sources).toEqual(approved.sources);
+    app = await createApp(fixture);
+    expect(await read()).toEqual(updated);
+  });
   it("persists source parameter exclusions without altering IFC observations or retained parameters", async () => {
     const type = snapshot.types[0];
     if (!type) throw Error("Missing fixture type");

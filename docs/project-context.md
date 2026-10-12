@@ -1,6 +1,6 @@
 # Project context
 
-The next proposed baseline is the [maintainable asset creation workflow](superpowers/specs/2026-10-06-asset-creation-workflow-design.md): Library is the front page and upload entry point; Generic Hard Asset supplies classification; staff finalize drafts in Needs review before approval. This design awaits written-spec review and is not yet implemented. [Domain vocabulary](../CONTEXT.md) defines asset as a maintainable building component and distinguishes reusable definitions from occurrences.
+The delivered [maintainable asset creation workflow](superpowers/specs/2026-10-06-asset-creation-workflow-design.md) starts in Library with Upload IFC. Browser analysis discovers typed and untyped physical components, staff selects a subset, and Needs review holds the resulting drafts until explicit approval. Generic Hard Asset supplies classification; unclassified candidates require a canonical category before approval. [Domain vocabulary](../CONTEXT.md) distinguishes reusable definitions from occurrences.
 
 The approved scope changed on 2026-10-06 from source-type browsing to a persistent staff-curated catalog. [Requirements](requirements-review.md) and the [curated design](superpowers/specs/2026-10-06-curated-asset-library-design.md) supersede the original source-GUID card/read-only curation assumptions. Read [verification](verification.md) for evidence and limits, and check current Git status/tests when resuming.
 
@@ -20,13 +20,15 @@ IFC indexing and reusable observation analysis run in dedicated browser workers.
 
 ## Local delivery
 
+Asset creation verification used production Chrome and separate port-3002 roots under `output/asset-creation-delivery/`. Controlled IFCs contained one physical occurrence and five occurrences grouped into two candidates. The final controlled state had two approved entries, one archived entry and one draft from a separate upload. Reimporting the same source preserved its existing approved entry exactly; another upload has a new source identity and can create another same-name draft. A separate read-only catalog copy retained 1,558 existing approvals and 12 drafts, and rendered real BS19/JV3 approved geometry. Normal catalog hashes and port-3001 PID stayed unchanged. See [verification](verification.md) for the evidence and limits.
+
 Use Node 24+, `npm run dev`, or `npm run build` then `npm start`. Configure `IFC_SOURCE_ROOT` for another computer. The default remains the external `PROPERTIES/<CODE>/IFC/*.ifc` folder. A fresh clone has no approved catalog until staff imports and approves real definitions. Original IFC files, managed uploads, catalog JSON and `output/playwright/` evidence are ignored local artifacts. Do not copy the validation catalog into normal managed data.
 
 Task 5 used an isolated production service on port 3002 with a copied source index in `output/curated-validation-data`. Normal port 3001/data and source files were preserved. It imported BS19/JV3, curated an actual BS19 generic cabinet using source area/volume, and checked side/centered geometry. A small real-parser fixture separately exercised split, merge, revision conflict and confirmed fallback. See the task report for the exact final isolated state.
 
 ## Limits and navigation
 
-Snapshots were about 20.0 MB for BS19 and 9.3 MB for JV3; combined pretty JSON was about 72 MB. Full-state APIs cost time and memory. Review rendering is paged at 50 definitions; selection applies to the visible page, and derived observations are cached. No HG62, exporter-wide, guaranteed memory-peak or long-session leak claim is made. Source fingerprints use size/mtime. Unsupported units never acquire guessed normalization.
+Earlier classified Sources snapshots were about 20.0 MB for BS19 and 9.3 MB for JV3; combined pretty JSON was about 72 MB. Complete BS19 creation commands include previously excluded/untyped observations. A one-selected command measured 35,905,423 UTF-8 bytes and passed isolated HTTP import with all 3,083 observations and 9,204 memberships. Catalog commands have a bounded 64 MiB budget; other JSON API routes retain 32 MiB. Full-state APIs cost time and memory. Review rendering is paged at 50 definitions; selection applies to the visible page, and derived observations are cached. No HG62, exporter-wide, guaranteed memory-peak or long-session leak claim is made. Source fingerprints use size/mtime. Unsupported units never acquire guessed normalization.
 
 The ignored `graphify-out/` graph in the normal checkout is navigation assistance. The controller refreshes it after integrating source/docs changes, using the corrected local dispatch. No duplicate worktree graph was generated. Verify graph findings against cited files; planned requirements are not implementation evidence.
 

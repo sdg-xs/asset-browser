@@ -3,6 +3,7 @@ import type {
   LibraryCommand,
   LibraryEntry,
   SourceReference,
+  AssetUploadDetails,
 } from "./catalog-library.js";
 import { libraryCommandSchema } from "./catalog-library.js";
 import { CatalogDomainError } from "./catalog-errors.js";
@@ -13,8 +14,24 @@ import { sourceFor, parameterSourceKeys, entryFieldSuggestions } from "./catalog
 import { acceptPublication } from "./catalog-publication.js";
 import { changedReferences } from "./catalog-references.js";
 import { importSnapshot } from "./catalog-import.js";
+import { sourceObservationKey } from "./catalog-source-identity.js";
+import { equalNormalized } from "./catalog-normalization.js";
 import { splitEntry } from "./catalog-split.js";
 import { excludeSourceParameters } from "./catalog-exclusions.js";
+function applyUploadDetails(state: CatalogLibrary, entry: LibraryEntry, details: AssetUploadDetails) {
+  if (details.categoryId !== undefined) {
+    if (!state.categories.some(category => category.id === details.categoryId))
+      throw new CatalogDomainError("NOT_FOUND", "The selected category could not be found.");
+    entry.definition.categoryId = details.categoryId;
+  }
+  entry.definition.name = details.name;
+  entry.definition.fdvuDocumentationUrl = details.fdvuDocumentationUrl;
+  entry.definition.specifications["IFC Class"] = details.ifcClass
+    ? { kind: "text", value: details.ifcClass, unit: null } : { kind: "missing" };
+  entry.definition.specifications.System = details.system
+    ? { kind: "text", value: details.system, unit: null } : { kind: "missing" };
+  entry.status = "draft";
+}
 export { entryFieldSuggestions } from "./catalog-observations.js";
 
 export function emptyCatalogLibrary(): CatalogLibrary {
@@ -66,19 +83,24 @@ function validateReferences(
   }
 }
 function validateSnapshot(
-  command: Extract<LibraryCommand, { kind: "import" }>,
+  command: Extract<LibraryCommand, { kind: "import" | "import-selected" | "import-asset" }>,
 ): void {
   const types = new Set<string>();
+  const occurrences = new Set<number>();
   for (const type of command.snapshot.types) {
     if (
-      types.has(type.typeGlobalId) ||
-      new Set(type.occurrenceIds).size !== type.occurrenceIds.length
+      types.has(sourceObservationKey(type)) ||
+      !type.occurrenceIds.length ||
+      new Set(type.occurrenceIds).size !== type.occurrenceIds.length ||
+      type.occurrenceIds.some(id => occurrences.has(id)) ||
+      (type.typeGlobalId === null && type.occurrenceIds.length !== 1)
     )
       throw new CatalogDomainError(
         "INVALID_COMMAND",
         "Snapshot contains repeated types or occurrences.",
       );
-    types.add(type.typeGlobalId);
+    types.add(sourceObservationKey(type));
+    for (const id of type.occurrenceIds) occurrences.add(id);
     const keys = new Set<string>();
     for (const field of type.fields) {
       if (keys.has(field.key))
@@ -88,17 +110,33 @@ function validateSnapshot(
         );
       keys.add(field.key);
       const membership = new Set<number>();
-      for (const value of field.values)
+      const ambiguousClassification = command.snapshot.analysisVersion === 3 &&
+        !!type.classificationIssues?.length && field.pset === "Identity Data" &&
+        field.name === "Generic Hard Asset" &&
+        field.key === JSON.stringify(["Identity Data", "Generic Hard Asset"]);
+      for (const [position, value] of field.values.entries()) {
+        if (new Set(value.occurrenceIds).size !== value.occurrenceIds.length ||
+            (ambiguousClassification && field.values.slice(0, position).some(previous =>
+              previous.rawValue === value.rawValue && previous.sourceUnit === value.sourceUnit &&
+              previous.sourceMeasure === value.sourceMeasure && equalNormalized(previous.normalized, value.normalized))))
+          throw new CatalogDomainError("INVALID_COMMAND", "Snapshot field values or occurrence membership are repeated.");
         for (const id of value.occurrenceIds) {
-          if (!type.occurrenceIds.includes(id) || membership.has(id))
+          if (!type.occurrenceIds.includes(id) || (membership.has(id) && !ambiguousClassification))
             throw new CatalogDomainError(
               "INVALID_COMMAND",
               "Snapshot field occurrence membership is invalid or repeated.",
             );
           membership.add(id);
         }
+      }
     }
   }
+  if (command.kind === "import-selected" && (command.snapshot.analysisVersion !== 3 || command.candidateKeys.some(key => !types.has(key))))
+    throw new CatalogDomainError("INVALID_COMMAND", "Select candidates from a complete creation analysis.");
+  if (command.kind === "import-asset" && (command.snapshot.analysisVersion !== 3 || !types.has(command.candidateKey)))
+    throw new CatalogDomainError("INVALID_COMMAND", "Choose one asset from the current IFC analysis.");
+  if (command.kind === "import" && (command.snapshot.analysisVersion === 3 || command.snapshot.types.some(type => type.typeGlobalId === null)))
+    throw new CatalogDomainError("INVALID_COMMAND", "Creation candidates require a selective creation import.");
 }
 function updateCategory(
   state: CatalogLibrary,
@@ -139,7 +177,13 @@ function updateCategory(
   if (target) {
     target.name = command.name;
     target.aliases = aliases;
-  } else state.categories.push({ id: command.id, name: command.name, aliases });
+    if (command.uploadMappings) target.uploadMappings = command.uploadMappings;
+    if (command.ifcClass !== undefined) target.ifcClass = command.ifcClass;
+    if (command.system !== undefined) target.system = command.system;
+  } else state.categories.push({ id: command.id, name: command.name, aliases,
+    ...(command.uploadMappings ? { uploadMappings: command.uploadMappings } : {}),
+    ...(command.ifcClass !== undefined ? { ifcClass: command.ifcClass } : {}),
+    ...(command.system !== undefined ? { system: command.system } : {}) });
   let template = state.templates.find(
     (template) => template.categoryId === command.id,
   );
@@ -194,13 +238,37 @@ export function applyLibraryCommand(
     );
   const next = structuredClone(state);
   switch (command.kind) {
+    case "create-asset": {
+      const entry: LibraryEntry = { id: crypto.randomUUID(), status: "draft", sourceReferences: [], reviewFlags: [], geometryReference: command.geometryReference,
+        definition: { name: command.name, description: "", kind: "generic", family: null, categoryId: null, tags: [], specifications: {},
+          manufacturer: { value: "", confirmed: false }, model: { value: "", confirmed: false } } };
+      if (command.details) applyUploadDetails(next, entry, command.details);
+      next.entries.push(entry);
+      break;
+    }
+    case "update-geometry":
+      requireEntry(next, command.entryId).geometryReference = command.geometryReference;
+      break;
     case "exclude-source-parameters":
       excludeSourceParameters(next, command.names);
       break;
     case "import":
+    case "import-selected":
       validateSnapshot(command);
-      if (!importSnapshot(next, command.snapshot)) return state;
+      if (!importSnapshot(next, command.snapshot, command.kind === "import-selected" ? command.candidateKeys : undefined)) return state;
       break;
+    case "import-asset": {
+      validateSnapshot(command);
+      const changed = importSnapshot(next, command.snapshot, [command.candidateKey], command.details?.categoryId);
+      if (command.details) {
+        const source = next.sources.find(source => source.modelId === command.snapshot.modelId &&
+          sourceObservationKey(source.observation) === command.candidateKey);
+        const entry = next.entries.find(entry => entry.sourceReferences.some(reference => reference.sourceId === source?.id));
+        if (!entry) throw new CatalogDomainError("NOT_FOUND", "The selected asset draft could not be found.");
+        applyUploadDetails(next, entry, command.details);
+      } else if (!changed) return state;
+      break;
+    }
     case "edit": {
       const entry = requireEntry(next, command.entryId);
       if (

@@ -9,12 +9,12 @@ import type {
 } from "../../shared/catalog-library.js";
 import {
   duplicateCandidates,
-  entryFieldSuggestions,
 } from "../../shared/catalog-rules.js";
 import { Dialog } from "../components/Dialog.js";
 import type { CatalogAction } from "./api.js";
 import {
   entrySpecifications,
+  entryFieldSuggestions,
   fieldLabel,
   entryFieldLabel,
   valueText,
@@ -262,6 +262,9 @@ export function ReviewDialog({
           </label>
           <section className="suggestion">
             <strong>{preferredSource?.observation.name}</strong>
+            {preferredSource && <p>{preferredSource.observation.typeGlobalId === null
+              ? `Element: ${preferredSource.observation.elementGlobalId}`
+              : `Type: ${preferredSource.observation.typeGlobalId}`}</p>}
             <p>
               {preferredSource?.sourceName} ·{" "}
               {preferredSource?.observation.ifcClass}

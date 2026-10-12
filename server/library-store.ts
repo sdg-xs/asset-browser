@@ -28,6 +28,8 @@ import {
   type LibraryModel,
 } from "../shared/contracts.js";
 import { DEFAULT_MAX_UPLOAD_BYTES } from "./config.js";
+import { CreationIndexSchema, type CreationIndex } from "../shared/asset-creation.js";
+import { replaceFile } from "./replace-file.js";
 
 const StoreOptionsSchema = z.object({
   sourceRoot: z.string().min(1),
@@ -70,6 +72,39 @@ function isWithin(root: string, path: string): boolean {
   );
 }
 
+function localModelPath(root: string, storedPath: string): string {
+  let path = resolve(root, storedPath);
+  if (isAbsolute(storedPath) && !isWithin(root, path)) {
+    // Legacy catalogs saved absolute OneDrive paths under the previous device's
+    // Windows profile. Rebase only the username, keeping the complete root suffix.
+    const profile = /^([a-z]:[\\/]Users[\\/])([^\\/]+)([\\/].*)$/i;
+    const currentRoot = root.match(profile);
+    const previousPath = storedPath.match(profile);
+    if (currentRoot && previousPath && currentRoot[1]?.toLowerCase() === previousPath[1]?.toLowerCase()) {
+      const previousRoot = `${currentRoot[1]}${previousPath[2]}${currentRoot[3]}`;
+      if (isWithin(previousRoot, storedPath))
+        path = resolve(root, relative(previousRoot, storedPath));
+    }
+  }
+  if (!isWithin(root, path))
+    throw new LibraryError(
+      "INVALID_STATE",
+      "A persisted model path is outside its configured root.",
+      500,
+    );
+  return path;
+}
+
+function modelFingerprint(info: { size: number; mtimeMs: number }, previous: string): string {
+  const [size, modified] = previous.split(":").map(Number);
+  // OneDrive can materialize the same revision with whole-second timestamps.
+  // Keep its saved binding only for this exact loss of precision and same size.
+  if (size === info.size && modified !== undefined && Number.isFinite(modified) &&
+      info.mtimeMs % 1000 === 0 && Math.floor(modified / 1000) * 1000 === info.mtimeMs)
+    return previous;
+  return `${info.size}:${info.mtimeMs}`;
+}
+
 export class LibraryStore {
   private state: State = { schemaVersion: 1, entries: [] };
   private queue: Promise<unknown> = Promise.resolve();
@@ -101,18 +136,15 @@ export class LibraryStore {
         await readFile(join(store.dataRoot, "library.json"), "utf8"),
       );
       store.state = StateSchema.parse(raw);
+      const legacyPaths = store.state.entries.some(entry => isAbsolute(entry.path));
       for (const entry of store.state.entries) {
         const root =
           entry.model.source === "existing"
             ? store.sourceRoot
             : join(store.dataRoot, "uploads");
-        if (!isWithin(root, resolve(entry.path)))
-          throw new LibraryError(
-            "INVALID_STATE",
-            "A persisted model path is outside its configured root.",
-            500,
-          );
+        entry.path = localModelPath(root, entry.path);
       }
+      if (legacyPaths) await store.commit(store.state.entries);
     } catch (error) {
       if (!hasCode(error, "ENOENT")) throw error;
     }
@@ -125,12 +157,22 @@ export class LibraryStore {
   }
   private async commit(entries: Entry[]): Promise<void> {
     const state: State = { schemaVersion: 1, entries };
+    const persisted: State = {
+      ...state,
+      entries: entries.map(entry => ({
+        ...entry,
+        path: relative(
+          entry.model.source === "existing" ? this.sourceRoot : join(this.dataRoot, "uploads"),
+          entry.path,
+        ).split(sep).join("/"),
+      })),
+    };
     const temporary = join(this.dataRoot, `library.${randomUUID()}.tmp`);
     try {
-      await writeFile(temporary, JSON.stringify(state, null, 2), {
+      await writeFile(temporary, JSON.stringify(persisted, null, 2), {
         flag: "wx",
       });
-      await rename(temporary, join(this.dataRoot, "library.json"));
+      await replaceFile({ temporary, destination: join(this.dataRoot, "library.json") });
       this.state = state;
     } finally {
       await unlink(temporary).catch((error) => {
@@ -195,7 +237,7 @@ export class LibraryStore {
         throw error;
       }
       if (!info.isFile()) continue;
-      const fingerprint = `${info.size}:${info.mtimeMs}`;
+      const fingerprint = modelFingerprint(info, entry.model.fingerprint);
       if (entry.model.fingerprint !== fingerprint)
         entry.model = {
           ...entry.model,
@@ -203,6 +245,7 @@ export class LibraryStore {
           modifiedAt: info.mtime.toISOString(),
           fingerprint,
           index: null,
+          creationIndex: undefined,
         };
       if (!entry.hidden) available.push(entry);
     }
@@ -277,8 +320,21 @@ export class LibraryStore {
   resolveModelFile(id: string): Promise<string> {
     return this.serialized(async () => (await this.findVisible(id)).path);
   }
+  saveCreationIndex(id: string, rawIndex: CreationIndex): Promise<CreationIndex> {
+    return this.serialized(async () => {
+      const index = CreationIndexSchema.parse(rawIndex);
+      const entry = await this.findVisible(id);
+      if (index.modelId !== id)
+        throw new LibraryError("INVALID_INDEX", "The creation index must belong to this model.", 400);
+      if (index.fingerprint !== entry.model.fingerprint)
+        throw new LibraryError("STALE_INDEX", "The source file changed. Discover its current revision again.", 409);
+      const model = { ...entry.model, creationIndex: index };
+      await this.commit(this.state.entries.map(item => item.model.id === id ? { ...item, model } : item));
+      return CreationIndexSchema.parse(index);
+    });
+  }
   withCurrentModels<T>(
-    requirements: { modelId: string; fingerprint: string }[],
+    requirements: { modelId: string; fingerprint: string; indexPurpose?: "browse" | "creation" }[],
     operation: (models: LibraryModel[]) => Promise<T>,
   ): Promise<T> {
     return this.serialized(async () => {
@@ -289,7 +345,7 @@ export class LibraryStore {
         try {
           const info = await file.stat();
           if (
-            `${info.size}:${info.mtimeMs}` !== requirement.fingerprint ||
+            modelFingerprint(info, entry.model.fingerprint) !== requirement.fingerprint ||
             entry.model.fingerprint !== requirement.fingerprint
           )
             throw new LibraryError(
@@ -297,10 +353,8 @@ export class LibraryStore {
               "The source file changed. Analyze its current revision again.",
               409,
             );
-          if (
-            !entry.model.index ||
-            entry.model.index.fingerprint !== requirement.fingerprint
-          )
+          const index = requirement.indexPurpose === "creation" ? entry.model.creationIndex : entry.model.index;
+          if (!index || index.fingerprint !== requirement.fingerprint)
             throw new LibraryError(
               "INDEX_REQUIRED",
               "Index the current source revision before importing or confirming source references.",
@@ -320,7 +374,7 @@ export class LibraryStore {
       const file = await open(entry.path, "r");
       try {
         const info = await file.stat();
-        const fingerprint = `${info.size}:${info.mtimeMs}`;
+        const fingerprint = modelFingerprint(info, entry.model.fingerprint);
         if (expectedFingerprint !== undefined && expectedFingerprint !== fingerprint)
           throw new LibraryError(
             "SOURCE_CHANGED",

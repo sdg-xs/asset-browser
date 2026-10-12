@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CreationIndexSchema, type CreationIndex } from "../../shared/asset-creation.js";
 import {
   CatalogIndexSchema,
   PreviewGeometrySchema,
@@ -37,6 +38,7 @@ export class IfcWorkerClient {
   private pending = new Map<number, Pending>();
   private sequence = 0;
   private opened: CatalogIndex | null = null;
+  private openedPurpose: "browse" | "creation" | null = null;
 
   private createWorker(): Worker {
     const worker = new Worker(new URL("./worker.ts", import.meta.url), {
@@ -94,20 +96,24 @@ export class IfcWorkerClient {
     model,
     fileUrl,
     onProgress = () => {},
+    purpose = "browse",
   }: {
     model: LibraryModel;
     fileUrl: string;
     onProgress?: Progress;
+    purpose?: "browse" | "creation";
   }): Promise<CatalogIndex> {
     if (
       this.opened?.modelId === model.id &&
-      this.opened.fingerprint === model.fingerprint
+      this.opened.fingerprint === model.fingerprint &&
+      this.openedPurpose === purpose
     )
       return this.opened;
     this.dispose();
     const pending = this.request(
       {
         kind: "open",
+        purpose,
         model,
         fileUrl: new URL(fileUrl, window.location.href).href,
         wasmPath: new URL("/wasm/", window.location.href).href,
@@ -117,6 +123,7 @@ export class IfcWorkerClient {
     const worker = this.worker;
     try {
       this.opened = CatalogIndexSchema.parse(await pending);
+      this.openedPurpose = purpose;
       return this.opened;
     } catch (error) {
       if (this.worker === worker) this.dispose();
@@ -134,6 +141,18 @@ export class IfcWorkerClient {
       .array(PropertyGroupSchema)
       .parse(await this.request({ kind: "properties", modelId, elementId }));
   }
+  async discoverAssets({ modelId, onProgress = () => {} }: {
+    modelId: string;
+    onProgress?: Progress;
+  }): Promise<CreationIndex> {
+    const opened = this.opened;
+    if (!opened || opened.modelId !== modelId)
+      throw new Error("Open this source model before discovering its assets.");
+    const index = CreationIndexSchema.parse(await this.request({ kind: "discover", modelId }, onProgress));
+    if (index.modelId !== modelId || index.fingerprint !== opened.fingerprint)
+      throw new Error("The creation index belongs to another source model or revision.");
+    return index;
+  }
   async analyzeLibrary({
     modelId,
     onProgress = () => {},
@@ -144,6 +163,18 @@ export class IfcWorkerClient {
     return librarySnapshotSchema.parse(
       await this.request({ kind: "analyze", modelId }, onProgress),
     );
+  }
+  async analyzeAssets({ modelId, onProgress = () => {} }: {
+    modelId: string;
+    onProgress?: Progress;
+  }): Promise<LibrarySnapshot> {
+    const opened = this.opened;
+    if (!opened || opened.modelId !== modelId)
+      throw new Error("Open this source model before analyzing its assets.");
+    const snapshot = librarySnapshotSchema.parse(await this.request({ kind: "analyze-assets", modelId }, onProgress));
+    if (snapshot.analysisVersion !== 3 || snapshot.modelId !== modelId || snapshot.fingerprint !== opened.fingerprint)
+      throw new Error("The creation analysis belongs to another source model or revision.");
+    return snapshot;
   }
   async readGeometry({
     modelId,
@@ -160,6 +191,7 @@ export class IfcWorkerClient {
     this.worker?.terminate();
     this.worker = null;
     this.opened = null;
+    this.openedPurpose = null;
     for (const pending of this.pending.values()) pending.reject(error);
     this.pending.clear();
   }

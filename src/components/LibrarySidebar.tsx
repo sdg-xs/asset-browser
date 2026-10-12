@@ -1,5 +1,6 @@
 import { FolderOpen, Layers3 } from "lucide-react";
 import type { LibraryModel } from "../../shared/contracts.js";
+import { groupAssetTypes } from "../library/type-groups.js";
 
 export function LibrarySidebar({
   models,
@@ -15,7 +16,8 @@ export function LibrarySidebar({
   onModel(id: string): void;
 }) {
   const categories = new Map<string, number>();
-  for (const type of model?.index?.types ?? [])
+  const types = groupAssetTypes(model?.index?.types ?? []);
+  for (const type of types)
     for (const name of type.categories)
       categories.set(name, (categories.get(name) ?? 0) + 1);
   return (
@@ -61,7 +63,7 @@ export function LibrarySidebar({
         >
           <Layers3 size={16} />
           <span>All asset types</span>
-          <span>{model?.index?.types.length ?? 0}</span>
+          <span>{types.length}</span>
         </button>
         {[...categories]
           .sort(([a], [b]) => a.localeCompare(b))

@@ -1,6 +1,6 @@
 # Curated asset library requirements
 
-The user-approved 2026-10-06 [curated design](superpowers/specs/2026-10-06-curated-asset-library-design.md) supersedes the original source-type-card organization and read-only catalog scope. The original IFC browser remains in Sources. This is a local, staff-only application, with no remote deployment required.
+The user-approved 2026-10-06 [curated design](superpowers/specs/2026-10-06-curated-asset-library-design.md) and delivered [creation workflow](superpowers/specs/2026-10-06-asset-creation-workflow-design.md) supersede the original source-type-card organization and read-only catalog scope. Library is the default front page and Upload IFC is its primary creation action. The original IFC browser remains in Sources. This is a local, staff-only application, with no remote deployment required.
 
 ## Definitions and review
 
@@ -12,7 +12,9 @@ The user-approved 2026-10-06 [curated design](superpowers/specs/2026-10-06-curat
 
 ## Source interpretation
 
-Instance property presence takes precedence over type fallback, including explicit blanks. `Identity Data / Generic Hard Asset` seeds categories; absent/blank/NA effective classifications are excluded from source indexes and counted. Missing numeric data is unknown, never zero. Observations retain raw value, measure/unit metadata, normalized value and exact occurrence membership.
+Instance property presence takes precedence over type fallback, including explicit blanks. `Identity Data / Generic Hard Asset` seeds categories. Legacy Sources indexes exclude absent/blank/NA effective classifications and count them. Creation discovery retains usable physical components with missing classification or type, displays their review issues, and requires staff selection and classification before approval. Spatial containers are outside creation candidates. Missing numeric data is unknown, never zero. Observations retain raw value, measure/unit metadata, normalized value and exact occurrence membership.
+
+Analysis creates candidates, not catalog drafts. Import creates only the selected drafts; no upload or analysis approves them. Creation selection spans candidate pages with a global count. Review batch approval preflights the checked entries, submits only eligible IDs and reports skipped reasons. Cancellation stops active analysis; an uploaded file may remain in Sources, and an already submitted atomic import may finish after the dialog closes.
 
 Recognized SI/conversion-based length, area, volume, power, flow and voltage normalize to m, m², m³, W, m³/s and V. Unsupported units remain text/unknown. Technical identities and installation labels are provenance, not reusable suggestions. Raw IFC property inspection remains available. Product hints are not confirmed identity.
 

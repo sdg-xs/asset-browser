@@ -3,20 +3,29 @@ import type {
   LibrarySnapshot,
   SourceTypeObservation,
   FieldMapping,
+  LibraryEntry,
 } from "./catalog-library.js";
-import { reusableField } from "./catalog-observations.js";
-import { parameterSourceKeys } from "./catalog-observations.js";
+import { reusableField, parameterSourceKeys } from "./catalog-observations.js";
+import { sourceObservationKey } from "./catalog-source-identity.js";
+import { identifiedTypeKey } from "./catalog-type-groups.js";
 
 export function importSnapshot(
   state: CatalogLibrary,
   snapshot: LibrarySnapshot,
+  candidateKeys?: string[],
+  assignedCategoryId?: string,
 ): boolean {
   let changed = false;
-  const observedIds = new Set(snapshot.types.map((type) => type.typeGlobalId));
+  const createdTypes = new Map<string, LibraryEntry>();
+  const observedIds = new Set(snapshot.types.map(sourceObservationKey));
   for (const source of state.sources.filter(
     (source) => source.modelId === snapshot.modelId,
   )) {
-    if (source.current && !observedIds.has(source.observation.typeGlobalId)) {
+    if (
+      source.current &&
+      (snapshot.analysisVersion === 3 || source.observation.typeGlobalId !== null) &&
+      !observedIds.has(sourceObservationKey(source.observation))
+    ) {
       source.current = false;
       changed = true;
       flagReferences(state, source.id);
@@ -26,16 +35,15 @@ export function importSnapshot(
     let source = state.sources.find(
       (candidate) =>
         candidate.modelId === snapshot.modelId &&
-        candidate.observation.typeGlobalId === observation.typeGlobalId,
+        sourceObservationKey(candidate.observation) === sourceObservationKey(observation),
     );
-    if (
+    const unchanged =
       source?.fingerprint === snapshot.fingerprint &&
       source.current &&
-      source.analysisVersion === snapshot.analysisVersion
-    )
-      continue;
-    changed = true;
-    if (source) {
+      source.analysisVersion === snapshot.analysisVersion &&
+      JSON.stringify(source.observation) === JSON.stringify(observation);
+    if (source && !unchanged) {
+      changed = true;
       source.fingerprint = snapshot.fingerprint;
       source.sourceName = snapshot.sourceName;
       source.revision += 1;
@@ -43,7 +51,8 @@ export function importSnapshot(
       source.analysisVersion = snapshot.analysisVersion;
       source.current = true;
       flagReferences(state, source.id);
-    } else {
+    } else if (!source) {
+      changed = true;
       source = {
         analysisVersion: snapshot.analysisVersion,
         id: crypto.randomUUID(),
@@ -55,8 +64,24 @@ export function importSnapshot(
         observation,
       };
       state.sources.push(source);
-      const categoryId = seedCategories(state, observation);
-      state.entries.push({
+    }
+    if (
+      (!candidateKeys || candidateKeys.includes(sourceObservationKey(observation))) &&
+      !state.entries.some(entry =>
+        entry.sourceReferences.some(reference => reference.sourceId === source.id),
+      )
+    ) {
+      changed = true;
+      const categoryId = assignedCategoryId ?? seedCategories(state, observation);
+      const typeKey = candidateKeys ? identifiedTypeKey(observation) : sourceObservationKey(observation);
+      const duplicate = createdTypes.get(typeKey);
+      if (duplicate) {
+        if (duplicate.definition.categoryId !== categoryId) duplicate.definition.categoryId = null;
+        duplicate.sourceReferences.push({ sourceId: source.id, fingerprint: source.fingerprint,
+          occurrenceIds: [...observation.occurrenceIds], equivalent: false });
+        continue;
+      }
+      const entry: LibraryEntry = {
         id: crypto.randomUUID(),
         status: "draft",
         reviewFlags: [],
@@ -79,9 +104,11 @@ export function importSnapshot(
             equivalent: false,
           },
         ],
-      });
+      };
+      state.entries.push(entry);
+      createdTypes.set(typeKey, entry);
     }
-    seedCategories(state, observation);
+    if (assignedCategoryId === undefined) seedCategories(state, observation);
   }
   return changed;
 }
@@ -142,5 +169,6 @@ function seedCategories(
       template.suggestions.push(mapping);
     }
   }
-  return categoryIds.length === 1 ? (categoryIds[0] ?? null) : null;
+  return !observation.classificationIssues?.length && categoryIds.length === 1
+    ? (categoryIds[0] ?? null) : null;
 }

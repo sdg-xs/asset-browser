@@ -5,9 +5,9 @@ import type {
   LibraryEntry,
   NormalizedValue,
 } from "../../shared/catalog-library.js";
-import { entryFieldSuggestions } from "../../shared/catalog-rules.js";
+import { visiblePropertySet } from "../property-display.js";
 import { Dialog } from "../components/Dialog.js";
-import { fieldLabel, valueText } from "./display.js";
+import { entryFieldSuggestions, fieldLabel, valueText, visibleParameter } from "./display.js";
 import type { CatalogAction } from "./api.js";
 export function EntryEditor({
   state,
@@ -16,6 +16,7 @@ export function EntryEditor({
   onSave,
   onClose,
   error,
+  onCategories,
 }: {
   state: CatalogLibrary;
   entry: LibraryEntry;
@@ -23,6 +24,7 @@ export function EntryEditor({
   error: string;
   onSave(action: CatalogAction): Promise<boolean>;
   onClose(): void;
+  onCategories(): void;
 }) {
   const [definition, setDefinition] = useState<EditableDefinition>(() =>
     structuredClone(entry.definition),
@@ -56,7 +58,7 @@ export function EntryEditor({
         {error && <p role="alert">{error}</p>}
         <fieldset className="authoring-fields" disabled={pending}>
           <p>
-            Saving returns this definition to Needs review. Your edits stay here
+            Save changes directly to your library. Your edits stay here
             if another staff member changes the catalog.
           </p>
           <div className="form-grid">
@@ -69,33 +71,33 @@ export function EntryEditor({
               />
             </label>
             <label>
-              Kind
-              <select
-                value={definition.kind}
-                onChange={(e) =>
-                  update({
-                    kind: e.target.value === "product" ? "product" : "generic",
-                  })
-                }
-              >
-                <option value="generic">Generic specification</option>
-                <option value="product">Product</option>
-              </select>
-            </label>
-            <label>
               Category
               <select
+                aria-label="Category"
+                aria-describedby="category-classification-help"
                 value={definition.categoryId ?? ""}
                 onChange={(e) => update({ categoryId: e.target.value || null })}
               >
                 <option value="">Choose category</option>
-                {state.categories.map((c) => (
+                {[...state.categories].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" })).map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
                   </option>
                 ))}
               </select>
+              <small id="category-classification-help">Canonical Generic Hard Asset classification</small>
             </label>
+          </div>
+          <p>Missing a category? <button type="button" onClick={onCategories}>Go to Categories</button> to add the canonical category, then return to this asset. Save your changes before leaving.</p>
+          <label>
+            FDVU Documentation
+            <input type="url" aria-label="FDVU Documentation" value={definition.fdvuDocumentationUrl ?? ""} placeholder="https://…"
+              onChange={event => update({ fdvuDocumentationUrl: event.target.value })} />
+            <small>Optional link to the asset’s FDVU documentation.</small>
+          </label>
+          <details className="definition-additional-details">
+            <summary>Additional definition details</summary>
+            <div className="form-grid">
             <label>
               Family
               <input
@@ -122,7 +124,8 @@ export function EntryEditor({
               />
             </label>
           </div>
-          {(["manufacturer", "model"] as const).map((key) => (
+          </details>
+          {definition.kind === "product" && (["manufacturer", "model"] as const).map((key) => (
             <fieldset key={key}>
               <legend>
                 {key === "manufacturer" ? "Manufacturer" : "Model"}
@@ -156,7 +159,7 @@ export function EntryEditor({
             Numeric source values retain their actual normalized units. Unknown
             is an explicit resolution, never zero.
           </p>
-          {Object.entries(definition.specifications).map(([key, value]) => (
+          {Object.entries(definition.specifications).filter(([key]) => visibleParameter(state, key, definition.categoryId)).map(([key, value]) => (
             <div className="spec-edit" key={key}>
               <label>
                 {fieldLabel(state, key, definition.categoryId)}
@@ -209,7 +212,7 @@ export function EntryEditor({
               <span className="badge">
                 {Object.hasOwn(definition.specifications, s.key)
                   ? definition.specifications[s.key]?.kind === "missing" ? "Unknown" : "Curated value"
-                  : s.status === "conflicting" ? "Needs review"
+                  : s.status === "conflicting" ? "Conflicting values"
                     : s.status === "consistent" ? "Source value" : "Missing values"}
               </span>
               <div className="action-row">
@@ -238,7 +241,8 @@ export function EntryEditor({
             </section>
           ))}
           <details>
-            <summary>Unconfirmed product hints from source</summary>
+            <summary>Source details</summary>
+            <h4>Unconfirmed product hints</h4>
             <p>These remain suggestions until entered and confirmed above.</p>
             {state.sources
               .filter((s) =>
@@ -246,7 +250,7 @@ export function EntryEditor({
               )
               .flatMap((s) =>
                 s.observation.fields
-                  .filter((f) => /manufacturer|model|product|sku/i.test(f.name))
+                  .filter((f) => visiblePropertySet(f.pset) && /manufacturer|model|product|sku/i.test(f.name))
                   .map((f) => (
                     <p key={`${s.id}:${f.key}`}>
                       {f.name}:{" "}

@@ -11,6 +11,7 @@ import {
 import { X, Box } from "lucide-react";
 import type { Inspection } from "../library/useLibrary.js";
 import { loadAssetViewer } from "../viewer/load-viewer.js";
+import { visiblePropertySet } from "../property-display.js";
 export type ViewerLoader = typeof loadAssetViewer;
 
 class ViewerBoundary extends Component<
@@ -71,6 +72,9 @@ export function AssetInspector({
   }, [selectedId, presentation]);
   if (inspection.kind === "closed") return null;
   const asset = inspection.asset;
+  const properties = inspection.kind === "ready"
+    ? inspection.properties.filter((group) => visiblePropertySet(group.name))
+    : [];
   return (
     <aside
       className={`inspector inspector-${presentation} inspector-${content}`}
@@ -142,7 +146,7 @@ export function AssetInspector({
               <span>IFC</span>
             </div>
             <details className="property-group">
-              <summary>Type identity</summary>
+              <summary>{asset.typeGlobalId === null ? "Element identity" : "Type identity"}</summary>
               <dl>
                 <div>
                   <dt>IFC class</dt>
@@ -150,11 +154,11 @@ export function AssetInspector({
                 </div>
                 <div>
                   <dt>GlobalId</dt>
-                  <dd>{asset.typeGlobalId}</dd>
+                  <dd>{asset.typeGlobalId === null ? asset.elementGlobalId : asset.typeGlobalId}</dd>
                 </div>
               </dl>
             </details>
-            {inspection.properties.map((group, i) => (
+            {properties.map((group, i) => (
               <details
                 className="property-group"
                 key={`${group.source}:${group.name}:${i}`}
@@ -174,7 +178,7 @@ export function AssetInspector({
                 </dl>
               </details>
             ))}
-            {!inspection.properties.length && (
+            {!properties.length && (
               <p>No property groups in this occurrence.</p>
             )}
           </section>}

@@ -6,6 +6,12 @@ import {
   IFCRELDEFINESBYTYPE,
   IFCPROPERTYSET,
   IFCPROPERTYSINGLEVALUE,
+  IFCELEMENTQUANTITY,
+  IFCRELASSIGNSTOGROUP,
+  IFCRELASSOCIATESMATERIAL,
+  IFCRELASSOCIATESCLASSIFICATION,
+  IFCRELASSOCIATESDOCUMENT,
+  IFCRELCONTAINEDINSPATIALSTRUCTURE,
   LogLevel,
 } from "web-ifc";
 import { z } from "zod";
@@ -15,8 +21,12 @@ import type {
   PreviewGeometry,
   PropertyGroup,
 } from "../../shared/contracts.js";
+import { buildCreationCatalog, type CreationOccurrence } from "./creation-catalog.js";
+import type { CreationIndex } from "../../shared/asset-creation.js";
+import { effectiveCategory } from "./catalog.js";
 import { buildCatalog, type Candidate } from "./catalog.js";
 import { analyzeLibrary, type PropertyObservation } from "./analyze-library.js";
+import { elementAttributes } from "./element-attributes.js";
 import { AnalysisUnits } from "./analysis-units.js";
 import type { LibrarySnapshot } from "../../shared/catalog-library.js";
 import {
@@ -45,6 +55,15 @@ const entitySchema = z.object({
     .optional(),
   HasPropertySets: z.array(reference).nullish(),
   HasProperties: z.array(reference).optional(),
+  Quantities: z.array(reference).optional(),
+  HasQuantities: z.array(reference).optional(),
+  LengthValue: scalar,
+  AreaValue: scalar,
+  VolumeValue: scalar,
+  WeightValue: scalar,
+  TimeValue: scalar,
+  CountValue: scalar,
+  NumberValue: scalar,
   NominalValue: scalar,
   EnumerationValues: z.array(scalar).nullish(),
   ListValues: z.array(scalar).nullish(),
@@ -74,8 +93,11 @@ export class IfcReader {
   private occurrenceSets = new Map<number, number[]>();
   private occurrenceTypes = new Map<number, number | null>();
   private typeEntities = new Map<number, Entity>();
-  private categories = new Map<number, string | undefined>();
+  private classifications = new Map<number, { present: boolean; value: string | undefined; issues: string[] }>();
   private propertySets = new Map<number, PropertyObservation[]>();
+  private linkedAttributes = new Map<number, { id: number; group: string }[]>();
+  private attributeCache = new Map<string, PropertyObservation[]>();
+  private attributeRelationshipsRead = false;
   private analysis: {
     index: CatalogIndex;
     sourceName: string;
@@ -111,6 +133,7 @@ export class IfcReader {
     model: Pick<LibraryModel, "id" | "fingerprint"> &
       Partial<Pick<LibraryModel, "name">>,
     progress: Progress = () => {},
+    purpose: "browse" | "creation" = "browse",
   ): CatalogIndex {
     this.close();
     if (
@@ -172,6 +195,7 @@ export class IfcReader {
         }
         const instanceCategory = this.category(
           this.occurrenceSets.get(elementId) ?? [],
+          purpose,
         );
         candidates.push({
           elementId,
@@ -180,6 +204,7 @@ export class IfcReader {
             instanceCategory === undefined
               ? this.category(
                   type?.HasPropertySets?.map((ref) => ref.value) ?? [],
+                  purpose,
                 )
               : undefined,
           type: type?.GlobalId?.value
@@ -207,6 +232,7 @@ export class IfcReader {
           unitIds,
         ),
       };
+      if (purpose === "creation") this.readAttributeRelationships();
       progress(`Indexed ${index.types.length.toLocaleString()} asset types`);
       return index;
     } catch (error) {
@@ -218,41 +244,81 @@ export class IfcReader {
     }
   }
 
-  private category(setIds: number[]): string | undefined {
+  private classification(setIds: number[]): { present: boolean; value: string | undefined; issues: string[] } {
     const values = new Set<string>();
-    for (const id of setIds) {
-      if (!this.categories.has(id)) {
+    const issues: string[] = [];
+    let present = false;
+    for (const id of new Set(setIds)) {
+      let cached = this.classifications.get(id);
+      if (!cached) {
         const set = this.entity(id);
-        let value: string | undefined;
-        if (
-          set.type === IFCPROPERTYSET &&
-          set.Name?.value === "Identity Data"
-        ) {
+        const setValues = new Set<string>();
+        const setIssues: string[] = [];
+        let setPresent = false;
+        if (set.type === IFCPROPERTYSET && set.Name?.value === "Identity Data")
           for (const ref of set.HasProperties ?? []) {
             const property = this.entity(ref.value);
             if (property.Name?.value !== "Generic Hard Asset") continue;
+            setPresent = true;
             if (property.type !== IFCPROPERTYSINGLEVALUE)
-              throw new Error(
-                `Unsupported Generic Hard Asset property kind at #${ref.value}.`,
-              );
-            const next = String(property.NominalValue?.value ?? "").trim();
-            if (value !== undefined && value !== next)
-              throw new Error(
-                `Conflicting Generic Hard Asset values in property set #${id}.`,
-              );
-            value = next;
+              setIssues.push(`Unsupported Generic Hard Asset property kind at #${ref.value}.`);
+            else setValues.add(String(property.NominalValue?.value ?? "").trim());
           }
-        }
-        this.categories.set(id, value);
+        if (setValues.size > 1)
+          setIssues.push(`Conflicting Generic Hard Asset values in property set #${id}.`);
+        cached = { present: setPresent, value: setIssues.length ? undefined : setValues.values().next().value, issues: setIssues };
+        this.classifications.set(id, cached);
       }
-      const value = this.categories.get(id);
-      if (value !== undefined) values.add(value);
+      present ||= cached.present;
+      issues.push(...cached.issues);
+      if (cached.value !== undefined) values.add(cached.value);
     }
     if (values.size > 1)
-      throw new Error(
-        `Conflicting Identity Data classifications in property sets ${setIds.join(", ")}.`,
-      );
-    return values.values().next().value;
+      issues.push(`Conflicting Identity Data classifications in property sets ${setIds.join(", ")}.`);
+    return { present, value: issues.length ? undefined : values.values().next().value, issues };
+  }
+
+  private category(setIds: number[], purpose: "browse" | "creation"): string | undefined {
+    const classification = this.classification(setIds);
+    if (classification.issues.length) {
+      if (purpose === "browse") throw new Error(classification.issues[0]);
+      return classification.present ? "" : undefined;
+    }
+    return classification.value;
+  }
+
+  discoverAssets(progress: Progress = () => {}): CreationIndex {
+    const analysis = this.analysis;
+    if (!analysis) throw new Error("Open an IFC model before creation discovery.");
+    try {
+      const occurrences: CreationOccurrence[] = [];
+      for (const elementId of this.candidates) {
+        if (occurrences.length % 1000 === 0)
+          progress(`Discovering ${occurrences.length.toLocaleString()} / ${this.candidates.size.toLocaleString()} physical elements`);
+        const element = this.entity(elementId);
+        const typeId = this.occurrenceTypes.get(elementId);
+        const type = typeId ? this.typeEntities.get(typeId) : undefined;
+        const instance = this.classification(this.occurrenceSets.get(elementId) ?? []);
+        const classification = instance.present ? instance : this.classification(type?.HasPropertySets?.map(ref => ref.value) ?? []);
+        const typed = type?.GlobalId?.value?.trim() ? type : undefined;
+        const identityEntity = typed ?? element;
+        const globalId = identityEntity.GlobalId?.value?.trim();
+        if (!globalId) throw new Error(`IFC component #${elementId} has no stable GlobalId.`);
+        const ifcClass = this.api.GetNameFromTypeCode(identityEntity.type).toUpperCase();
+        occurrences.push({
+          identity: { kind: typed ? "type" : "element", globalId }, elementId, ifcClass,
+          name: typed?.Name?.value?.trim() || element.Name?.value?.trim() || ifcClass,
+          category: effectiveCategory(classification.value, undefined),
+          classificationIssues: classification.issues,
+        });
+      }
+      const index = buildCreationCatalog({ modelId: analysis.index.modelId, fingerprint: analysis.index.fingerprint }, occurrences);
+      progress(`Discovered ${index.candidates.length.toLocaleString()} creation candidates`);
+      return index;
+    } catch (error) {
+      this.close();
+      throw error;
+    }
   }
 
   private assertElement(elementId: number): void {
@@ -262,11 +328,18 @@ export class IfcReader {
       );
   }
   librarySnapshot(progress: Progress = () => {}): LibrarySnapshot {
+    return this.analyze(this.analysis?.index, progress);
+  }
+  analyzeAssets(progress: Progress = () => {}): LibrarySnapshot {
+    if (!this.attributeRelationshipsRead) this.readAttributeRelationships();
+    return this.analyze(this.discoverAssets(progress), progress);
+  }
+  private analyze(index: CatalogIndex | CreationIndex | undefined, progress: Progress): LibrarySnapshot {
     const analysis = this.analysis;
-    if (!analysis)
+    if (!analysis || !index)
       throw new Error("Open an IFC model before library analysis.");
     return analyzeLibrary({
-      index: analysis.index,
+      index,
       sourceName: analysis.sourceName,
       progress,
       properties: (occurrenceId) => {
@@ -275,22 +348,102 @@ export class IfcReader {
         const instance = this.observations(
           this.occurrenceSets.get(occurrenceId) ?? [],
           analysis.units,
+          new Set(),
+          "candidates" in index,
         );
         const fallback = this.observations(
           type?.HasPropertySets?.map((ref) => ref.value) ?? [],
           analysis.units,
           new Set(instance.map((field) => field.key)),
+          "candidates" in index,
         );
-        return [...fallback, ...instance];
+        if (!("candidates" in index)) return [...fallback, ...instance];
+        return [...fallback, ...instance,
+          ...this.attributes(occurrenceId, "IFC element attributes"),
+          ...(typeId ? this.attributes(typeId, "IFC type attributes") : []),
+          ...[...(this.linkedAttributes.get(occurrenceId) ?? []), ...(typeId ? this.linkedAttributes.get(typeId) ?? [] : [])]
+            .flatMap(link => this.attributes(link.id, link.group)),
+        ];
       },
     });
+  }
+  private attributes(id: number, group: string): PropertyObservation[] {
+    const key = `${group}:${id}`;
+    let fields = this.attributeCache.get(key);
+    if (!fields) {
+      fields = elementAttributes({ raw: this.api.GetLine(this.current, id, false), group,
+        read: id => this.api.GetLine(this.current, id, false), className: type => this.api.GetNameFromTypeCode(type) });
+      this.attributeCache.set(key, fields);
+    }
+    return fields;
+  }
+  private readAttributeRelationships(): void {
+    const relationSchema = z.object({
+      RelatedObjects: z.array(reference).optional(), RelatedElements: z.array(reference).optional(),
+      RelatingGroup: reference.optional(), RelatingMaterial: reference.optional(),
+      RelatingClassification: reference.optional(), RelatingDocument: reference.optional(), RelatingStructure: reference.optional(),
+    });
+    const relationships = [
+      { type: IFCRELASSIGNSTOGROUP, key: "RelatingGroup", group: "IFC group attributes" },
+      { type: IFCRELASSOCIATESMATERIAL, key: "RelatingMaterial", group: "IFC material attributes" },
+      { type: IFCRELASSOCIATESCLASSIFICATION, key: "RelatingClassification", group: "IFC classification attributes" },
+      { type: IFCRELASSOCIATESDOCUMENT, key: "RelatingDocument", group: "IFC document attributes" },
+      { type: IFCRELCONTAINEDINSPATIALSTRUCTURE, key: "RelatingStructure", group: "IFC spatial container attributes" },
+    ] as const;
+    for (const { type, key, group } of relationships) for (const id of this.ids(type, true)) {
+      const relation = relationSchema.parse(this.api.GetLine(this.current, id, false));
+      const target = relation[key];
+      if (!target) continue;
+      const targetGroup = key === "RelatingGroup" && this.api.GetNameFromTypeCode(this.entity(target.value).type).toUpperCase().includes("SYSTEM")
+        ? "IFC system attributes" : group;
+      for (const related of relation.RelatedObjects ?? relation.RelatedElements ?? []) {
+        if (!this.candidates.has(related.value) && !this.typeEntities.has(related.value)) continue;
+        const links = this.linkedAttributes.get(related.value) ?? [];
+        if (!links.some(link => link.id === target.value && link.group === targetGroup)) links.push({ id: target.value, group: targetGroup });
+        this.linkedAttributes.set(related.value, links);
+      }
+    }
+    this.attributeRelationshipsRead = true;
+  }
+  private quantities(ids: number[], pset: string, units: AnalysisUnits, visited = new Set<number>()): PropertyObservation[] {
+    const fields: PropertyObservation[] = [];
+    const measures = [
+      ["LengthValue", "IFCLENGTHMEASURE"], ["AreaValue", "IFCAREAMEASURE"],
+      ["VolumeValue", "IFCVOLUMEMEASURE"], ["WeightValue", "IFCMASSMEASURE"],
+      ["TimeValue", "IFCTIMEMEASURE"], ["CountValue", "IFCCOUNTMEASURE"], ["NumberValue", "IFCNUMBERMEASURE"],
+    ] as const;
+    for (const id of ids) {
+      if (visited.has(id)) continue;
+      visited.add(id);
+      const quantity = this.entity(id);
+      const name = quantity.Name?.value ?? `Quantity #${id}`;
+      if (quantity.HasQuantities) {
+        fields.push(...this.quantities(quantity.HasQuantities.map(ref => ref.value), `${pset} / ${name}`, units, visited));
+        continue;
+      }
+      const measure = measures.find(([key]) => quantity[key] !== null && quantity[key] !== undefined);
+      const scalarValue = measure ? quantity[measure[0]]?.value : undefined;
+      const rawValue = scalarValue === undefined ? "" : String(scalarValue);
+      const measureName = measure?.[1] ?? "Unknown IFC quantity";
+      const resolved = units.forMeasure(measureName, quantity.Unit?.value);
+      const unit = resolved?.label ?? null;
+      let normalized = normalizeObservation({ value: rawValue, measure: "unsupported", unit });
+      if (typeof scalarValue === "number" && resolved?.factor !== null && resolved?.factor !== undefined && resolved.canonical) {
+        const value = scalarValue * resolved.factor;
+        if (Number.isFinite(value)) normalized = { kind: "number", value, unit: resolved.canonical };
+      }
+      fields.push({ key: JSON.stringify([pset, name]), pset, name, origin: "quantity", measure: measureName, unit,
+        rawValue, normalized: normalized.kind === "text" && /MEASURE/.test(measureName) ? { ...normalized, unresolvedMeasure: true } : normalized });
+    }
+    return fields;
   }
   private observations(
     setIds: number[],
     units: AnalysisUnits,
     overridden = new Set<string>(),
+    creation = false,
   ): PropertyObservation[] {
-    const fields = new Map<string, PropertyObservation>();
+    const fields = new Map<string, PropertyObservation[]>();
     for (const setId of new Set(setIds)) {
       let cached = this.propertySets.get(setId);
       if (!cached) {
@@ -347,23 +500,32 @@ export class IfcReader {
                   : normalized,
             });
           }
+        if (set.type === IFCELEMENTQUANTITY)
+          cached.push(...this.quantities((set.Quantities ?? []).map(ref => ref.value), set.Name?.value ?? `Quantity set #${setId}`, units));
         this.propertySets.set(setId, cached);
       }
       for (const field of cached) {
         if (overridden.has(field.key)) continue;
-        const existing = fields.get(field.key);
-        if (
-          existing &&
-          (existing.rawValue !== field.rawValue ||
-            !equalNormalized(existing.normalized, field.normalized))
-        )
-          throw new Error(
-            `Conflicting properties for ${field.pset} / ${field.name} in one occurrence.`,
-          );
-        fields.set(field.key, field);
+        const existing = fields.get(field.key) ?? [];
+        const previous = existing[0];
+        if (!creation || field.pset !== "Identity Data" || field.name !== "Generic Hard Asset") {
+          if (previous && (previous.rawValue !== field.rawValue ||
+              !equalNormalized(previous.normalized, field.normalized)))
+            throw new Error(`Conflicting properties for ${field.pset} / ${field.name} in one occurrence.`);
+          fields.set(field.key, [field]);
+          continue;
+        }
+        const equivalent = existing.findIndex(value => value.rawValue === field.rawValue &&
+          equalNormalized(value.normalized, field.normalized));
+        if (equivalent >= 0) {
+          existing[equivalent] = field;
+          continue;
+        }
+        existing.push(field);
+        fields.set(field.key, existing);
       }
     }
-    return [...fields.values()];
+    return [...fields.values()].flat();
   }
   properties(elementId: number): PropertyGroup[] {
     this.assertElement(elementId);
@@ -483,11 +645,14 @@ export class IfcReader {
     this.modelId = null;
     this.analysis = null;
     this.propertySets.clear();
+    this.attributeCache.clear();
+    this.linkedAttributes.clear();
+    this.attributeRelationshipsRead = false;
     this.candidates.clear();
     this.occurrenceSets.clear();
     this.occurrenceTypes.clear();
     this.typeEntities.clear();
-    this.categories.clear();
+    this.classifications.clear();
   }
   dispose(): void {
     this.close();

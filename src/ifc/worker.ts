@@ -23,7 +23,14 @@ self.onmessage = async (event: MessageEvent<unknown>) => {
   const request = parsed.data;
   try {
     switch (request.kind) {
+      case "discover":
+        if (openedModel !== request.modelId)
+          throw new Error("Open this source model before discovering its assets.");
+        send({ kind: "creation-index", requestId: request.requestId,
+          value: reader.discoverAssets(message => send({ kind: "progress", requestId: request.requestId, message })) });
+        return;
       case "analyze":
+      case "analyze-assets":
         if (openedModel !== request.modelId)
           throw new Error(
             "Open this source model before analyzing its assets.",
@@ -31,12 +38,14 @@ self.onmessage = async (event: MessageEvent<unknown>) => {
         send({
           kind: "analysis",
           requestId: request.requestId,
-          value: reader.librarySnapshot((message) =>
+          value: (request.kind === "analyze-assets" ? reader.analyzeAssets.bind(reader) : reader.librarySnapshot.bind(reader))((message) =>
             send({ kind: "progress", requestId: request.requestId, message }),
           ),
         });
         return;
       case "open": {
+        openedModel = null;
+        reader.close();
         const url = new URL(request.fileUrl);
         if (url.origin !== self.location.origin)
           throw new Error("IFC files must be loaded from this application.");
@@ -48,8 +57,7 @@ self.onmessage = async (event: MessageEvent<unknown>) => {
         const bytes = await downloadModel(url, request.model);
         await reader.initialize(request.wasmPath);
         const value = reader.open(bytes, request.model, (message) =>
-          send({ kind: "progress", requestId: request.requestId, message }),
-        );
+          send({ kind: "progress", requestId: request.requestId, message }), request.purpose);
         openedModel = request.model.id;
         send({ kind: "index", requestId: request.requestId, value });
         return;

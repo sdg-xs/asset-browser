@@ -22,6 +22,7 @@ export const observedFieldSchema = z.object({
   name: z.string(),
   measure: z.string(),
   unit: z.string().nullable(),
+  origin: z.enum(["attribute", "quantity"]).optional(),
   values: z.array(
     z.object({
       rawValue: z.string(),
@@ -33,17 +34,21 @@ export const observedFieldSchema = z.object({
   ),
 });
 export type ObservedField = z.infer<typeof observedFieldSchema>;
-export const sourceTypeObservationSchema = z.object({
-  typeGlobalId: id,
+const observationProperties = {
   name: z.string(),
   ifcClass: z.string(),
   categories: z.array(z.string()),
+  classificationIssues: z.array(z.string().min(1)).optional(),
   occurrenceIds,
   fields: z.array(observedFieldSchema),
-});
+};
+export const sourceTypeObservationSchema = z.union([
+  z.object({ typeGlobalId: id, ...observationProperties }),
+  z.object({ typeGlobalId: z.null(), elementGlobalId: id, ...observationProperties }),
+]);
 export type SourceTypeObservation = z.infer<typeof sourceTypeObservationSchema>;
 export const librarySnapshotSchema = z.object({
-  analysisVersion: z.literal(2).optional(),
+  analysisVersion: z.union([z.literal(2), z.literal(3)]).optional(),
   modelId: id,
   fingerprint: id,
   sourceName: z.string(),
@@ -59,10 +64,20 @@ export const fieldMappingSchema = z.object({
   role: z.enum(["specification", "variant"]),
 });
 export type FieldMapping = z.infer<typeof fieldMappingSchema>;
+export const uploadMappingsSchema = z.object({
+  name: z.string(),
+  ifcClass: z.string(),
+  system: z.string(),
+  fdvuDocumentationUrl: z.string(),
+});
+export type UploadMappings = z.infer<typeof uploadMappingsSchema>;
 export const catalogCategorySchema = z.object({
   id,
   name: z.string(),
   aliases: z.array(z.string()),
+  uploadMappings: uploadMappingsSchema.optional(),
+  ifcClass: z.string().trim().optional(),
+  system: z.string().trim().optional(),
 });
 export type CatalogCategory = z.infer<typeof catalogCategorySchema>;
 export const categoryTemplateSchema = z.object({
@@ -76,9 +91,21 @@ export const identitySchema = z.object({
   confirmed: z.boolean(),
 });
 export type CatalogIdentity = z.infer<typeof identitySchema>;
+export const fdvuDocumentationUrlSchema = z.string().trim().refine(value => !value ||
+  (URL.canParse(value) && ["http:", "https:"].includes(new URL(value).protocol)),
+  "Enter an http:// or https:// FDVU documentation link.");
+export const assetUploadDetailsSchema = z.object({
+  name: z.string().trim().min(1, "Enter an asset name."),
+  ifcClass: z.string().trim(),
+  system: z.string().trim(),
+  fdvuDocumentationUrl: fdvuDocumentationUrlSchema,
+  categoryId: id.optional(),
+});
+export type AssetUploadDetails = z.infer<typeof assetUploadDetailsSchema>;
 export const editableDefinitionSchema = z.object({
   name: z.string(),
   description: z.string(),
+  fdvuDocumentationUrl: fdvuDocumentationUrlSchema.optional(),
   kind: z.enum(["generic", "product"]),
   family: z.string().nullable(),
   categoryId: z.string().nullable(),
@@ -96,7 +123,7 @@ export const sourceReferenceSchema = z.object({
 });
 export type SourceReference = z.infer<typeof sourceReferenceSchema>;
 export const sourceRecordSchema = z.object({
-  analysisVersion: z.literal(2).optional(),
+  analysisVersion: z.union([z.literal(2), z.literal(3)]).optional(),
   id,
   modelId: id,
   fingerprint: id,
@@ -106,12 +133,19 @@ export const sourceRecordSchema = z.object({
   observation: sourceTypeObservationSchema,
 });
 export type SourceRecord = z.infer<typeof sourceRecordSchema>;
+export const geometryReferenceSchema = z.union([z.object({ kind: z.literal("mesh"), geometryId: z.uuid() }), z.object({
+  modelId: z.uuid(),
+  fingerprint: id,
+  candidateKey: id,
+  occurrenceId: z.number().int().positive(),
+})]);
 export const libraryEntrySchema = z.object({
   id,
   definition: editableDefinitionSchema,
   status: z.enum(["draft", "approved", "archived"]),
   sourceReferences: z.array(sourceReferenceSchema),
   reviewFlags: z.array(z.enum(["source-changed"])),
+  geometryReference: geometryReferenceSchema.optional(),
   publication: z
     .object({
       specifications: z.record(z.string(), normalizedValueSchema),
@@ -139,6 +173,32 @@ export const sourceRebindingSchema = z.object({
 });
 export type SourceRebinding = z.infer<typeof sourceRebindingSchema>;
 export const libraryCommandSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("create-asset"),
+    expectedRevision,
+    name: z.string().trim().min(1),
+    details: assetUploadDetailsSchema.optional(),
+    geometryReference: geometryReferenceSchema,
+  }),
+  z.object({
+    kind: z.literal("update-geometry"),
+    expectedRevision,
+    entryId: id,
+    geometryReference: geometryReferenceSchema,
+  }),
+  z.object({
+    kind: z.literal("import-asset"),
+    expectedRevision,
+    snapshot: librarySnapshotSchema,
+    candidateKey: id,
+    details: assetUploadDetailsSchema.optional(),
+  }),
+  z.object({
+    kind: z.literal("import-selected"),
+    expectedRevision,
+    snapshot: librarySnapshotSchema,
+    candidateKeys: z.array(id).min(1).refine(keys => new Set(keys).size === keys.length, "Candidate keys must be unique."),
+  }),
   z.object({
     kind: z.literal("exclude-source-parameters"),
     expectedRevision,
@@ -188,6 +248,9 @@ export const libraryCommandSchema = z.discriminatedUnion("kind", [
     id,
     name: z.string().trim().min(1),
     aliases: z.array(z.string().trim().min(1)),
+    uploadMappings: uploadMappingsSchema.optional(),
+    ifcClass: catalogCategorySchema.shape.ifcClass,
+    system: catalogCategorySchema.shape.system,
   }),
   z.object({
     kind: z.literal("template"),

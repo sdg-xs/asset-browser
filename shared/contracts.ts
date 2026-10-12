@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CreationIndexSchema } from "./asset-creation.js";
 
 export const ModelIdSchema = z.uuid();
 export const AssetTypeSchema = z.object({
@@ -12,6 +13,8 @@ export const AssetTypeSchema = z.object({
   representativeId: z.int().positive(),
 });
 export type AssetType = z.infer<typeof AssetTypeSchema>;
+export const ElementAssetSchema = AssetTypeSchema.omit({ typeGlobalId: true }).extend({ typeGlobalId: z.null(), elementGlobalId: z.string().min(1) });
+export type PreviewAsset = AssetType | z.infer<typeof ElementAssetSchema>;
 
 export const CatalogIndexSchema = z.object({
   schemaVersion: z.literal(1),
@@ -35,6 +38,7 @@ export const LibraryModelSchema = z.object({
   modifiedAt: z.iso.datetime(),
   fingerprint: z.string().min(1),
   index: CatalogIndexSchema.nullable(),
+  creationIndex: CreationIndexSchema.optional(),
 });
 export type LibraryModel = z.infer<typeof LibraryModelSchema>;
 export const LibraryModelsSchema = z.array(LibraryModelSchema);

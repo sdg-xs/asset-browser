@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   AssetType,
+  PreviewAsset,
   CatalogIndex,
   LibraryModel,
   PreviewGeometry,
@@ -9,10 +10,11 @@ import type {
 import { IfcWorkerClient } from "../ifc/client.js";
 import { libraryApi, type LibraryApi } from "./api.js";
 import { SourceRevisionError } from "../../shared/revision.js";
+import { groupAssetTypes } from "./type-groups.js";
 
 export type LibraryWorker = Pick<
   IfcWorkerClient,
-  "openModel" | "readProperties" | "readGeometry" | "dispose"
+  "openModel" | "discoverAssets" | "readProperties" | "readGeometry" | "dispose"
 >;
 export interface Dependencies {
   api: LibraryApi;
@@ -27,18 +29,18 @@ type Processing =
   | { kind: "busy"; message: string }
   | { kind: "ready" }
   | { kind: "failed"; message: string };
-export type Inspection =
+export type Inspection<A extends PreviewAsset = PreviewAsset> =
   | { kind: "closed" }
-  | { kind: "loading"; asset: AssetType }
+  | { kind: "loading"; asset: A }
   | {
       kind: "ready";
-      asset: AssetType;
+      asset: A;
       properties: PropertyGroup[];
       geometry: PreviewGeometry | null;
       notice: string;
       elementId: number;
     }
-  | { kind: "failed"; asset: AssetType; message: string };
+  | { kind: "failed"; asset: A; message: string };
 const message = (error: unknown) =>
   error instanceof Error
     ? error.message
@@ -52,7 +54,7 @@ export function useLibrary(dependencies: Dependencies = defaults) {
   });
   const [modelId, setModelId] = useState("");
   const [processing, setProcessing] = useState<Processing>({ kind: "idle" });
-  const [inspection, setInspection] = useState<Inspection>({ kind: "closed" });
+  const [inspection, setInspection] = useState<Inspection<AssetType>>({ kind: "closed" });
   const [notice, setNotice] = useState("");
   const client = useRef<LibraryWorker | null>(null);
   const modelGeneration = useRef(0);
@@ -204,7 +206,7 @@ export function useLibrary(dependencies: Dependencies = defaults) {
         try {
           const catalog = await open(model);
           if (!valid() || !client.current) return;
-          const currentAsset = catalog.types.find((type) => type.id === asset.id);
+          const currentAsset = groupAssetTypes(catalog.types).find((type) => type.id === asset.id);
           if (!currentAsset) throw new Error(
             "This type is absent from the current source revision. Choose a current asset type.",
           );

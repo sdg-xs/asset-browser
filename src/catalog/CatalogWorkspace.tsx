@@ -1,87 +1,70 @@
 import { useEffect, useMemo, useState } from "react";
 import { loadAssetViewer } from "../viewer/load-viewer.js";
-import { Boxes, Grid2X2, List, Search } from "lucide-react";
+import { Boxes, FileUp, Grid2X2, List, Search } from "lucide-react";
+import { AssetCreationDialog } from "./AssetCreationDialog.js";
+import type { CreationWorker } from "./useAssetCreation.js";
 import { useSourceAvailability } from "./useSourceAvailability.js";
 import { IfcWorkerClient } from "../ifc/client.js";
 import { libraryApi, type LibraryApi } from "../library/api.js";
 import type { LibraryWorker } from "../library/useLibrary.js";
 import type { ViewerLoader } from "../components/AssetInspector.js";
-import { SourceWorkspace } from "../components/SourceWorkspace.js";
 import { Dialog } from "../components/Dialog.js";
+import { Brand } from "../components/Brand.js";
 import { catalogApi as defaultCatalogApi, type CatalogApi } from "./api.js";
 import { useCatalogLibrary } from "./useCatalogLibrary.js";
-import { useSourceAnalysis, type AnalysisWorker } from "./useSourceAnalysis.js";
-import { CatalogSidebar, type Workspace } from "./CatalogSidebar.js";
+import { CatalogSidebar, CatalogTabs } from "./CatalogSidebar.js";
 import { DefinitionCards } from "./DefinitionCards.js";
 import { DefinitionInspector } from "./DefinitionInspector.js";
 import { EntryEditor } from "./EntryEditor.js";
 import { CategoryEditor } from "./CategoryEditor.js";
-import { ReviewDialog } from "./ReviewDialog.js";
+import { UpdateGeometryDialog } from "./UpdateGeometryDialog.js";
+import { geometryApi as defaultGeometryApi, type GeometryApi } from "./geometry-api.js";
 import { entrySpecifications, valueText } from "./display.js";
+import { definitionGroups } from "./definition-groups.js";
 const createDefaultWorker = () => new IfcWorkerClient();
 export interface CatalogWorkspaceProps {
   catalogApi?: CatalogApi;
   sourceApi?: LibraryApi;
+  meshApi?: GeometryApi;
   createWorker?: () => LibraryWorker;
-  createAnalysisWorker?: () => AnalysisWorker;
+  createCreationWorker?: () => CreationWorker;
   loadViewer?: ViewerLoader;
 }
 export function CatalogWorkspace({
   catalogApi = defaultCatalogApi,
   sourceApi = libraryApi,
+  meshApi = defaultGeometryApi,
   createWorker = createDefaultWorker,
-  createAnalysisWorker = createDefaultWorker,
+  createCreationWorker = createDefaultWorker,
   loadViewer = loadAssetViewer,
 }: CatalogWorkspaceProps) {
   const catalog = useCatalogLibrary(catalogApi);
   const state = catalog.state;
-  const [workspace, setWorkspace] = useState<Workspace>("Library"),
-    [category, setCategory] = useState(""),
-    [search, setSearch] = useState(""),
-    [source, setSource] = useState(""),
-    [kind, setKind] = useState("");
+  const [selectedCategories, setSelectedCategories] = useState<string[] | null>(null),
+    [search, setSearch] = useState("");
+  const [categoriesOpen, setCategoriesOpen] = useState(false);
   const [mode, setMode] = useState<"grid" | "list">("grid"),
-    [archived, setArchived] = useState(false),
     [selected, setSelected] = useState(""),
     [modal, setModal] = useState(false),
-    [checked, setChecked] = useState<string[]>([]),
     [editor, setEditor] = useState<
-      "edit" | "merge" | "split" | "geometry" | null
+      "edit" | "geometry" | null
     >(null);
   const [page, setPage] = useState(0);
+  const [creating, setCreating] = useState(false);
+  const [geometryFiles, setGeometryFiles] = useState<File[] | null>(null);
+  const [creationNotice, setCreationNotice] = useState("");
   const { availability, retry: retryAvailability } = useSourceAvailability(
     sourceApi,
-    workspace,
+    "Library",
     state?.revision,
   );
-  const dependencies = useMemo(
-    () => ({ api: sourceApi, createWorker }),
-    [sourceApi, createWorker],
-  );
-  const analysis = useSourceAnalysis(
-    createAnalysisWorker,
-    sourceApi,
-    (snapshot) => catalog.execute({ kind: "import", snapshot }),
-  );
   const query = search.toLocaleLowerCase().trim();
-  const entries = useMemo(
+  const filteredEntries = useMemo(
     () =>
       state?.entries.filter(
         (e) =>
-          (workspace === "Needs review"
-            ? archived
-              ? e.status === "archived"
-              : e.status === "draft" ||
-                (e.status === "approved" && e.reviewFlags.length > 0)
-            : e.status === "approved") &&
-          (!category || e.definition.categoryId === category) &&
-          (!kind || e.definition.kind === kind) &&
-          (!source ||
-            e.sourceReferences.some((r) =>
-              state.sources.some(
-                (s) => s.id === r.sourceId && s.modelId === source,
-              ),
-            )) &&
+          e.status !== "archived" &&
+          (selectedCategories === null || (e.definition.categoryId !== null && selectedCategories.includes(e.definition.categoryId))) &&
           (!query ||
             [
               e.definition.name,
@@ -97,11 +80,13 @@ export function CatalogWorkspace({
               .toLocaleLowerCase()
               .includes(query)),
       ) ?? [],
-    [state, workspace, archived, category, kind, source, query],
+    [state, selectedCategories, query],
   );
+  const groups = useMemo(() => definitionGroups(filteredEntries), [filteredEntries]);
+  const entries = filteredEntries.filter(entry => groups.has(entry.id));
   useEffect(
     () => setPage(0),
-    [workspace, archived, category, kind, source, query],
+    [selectedCategories, query],
   );
   const pageCount = Math.max(1, Math.ceil(entries.length / 50));
   const currentPage = Math.min(page, pageCount - 1);
@@ -109,47 +94,36 @@ export function CatalogWorkspace({
     currentPage * 50,
     (currentPage + 1) * 50,
   );
-  const visibleIds = visibleEntries.map((e) => e.id).join("|");
-  useEffect(() => {
-    setChecked([]);
-  }, [visibleIds, state?.revision, workspace]);
   const entry = state?.entries.find((e) => e.id === selected);
-  const navigate = (value: Workspace) => {
-    analysis.cancel();
-    setWorkspace(value);
+  const selectedGroup = [...groups.values()].find(members => members.some(member => member.id === selected)) ?? [];
+  const selectedCardId = selectedGroup[0]?.id ?? selected;
+  const navigate = () => {
+    retryAvailability();
+    setCategoriesOpen(false);
     setSelected("");
     setEditor(null);
-    setCategory("");
+    setSelectedCategories(null);
     setSearch("");
-    setSource("");
-    setKind("");
   };
   const inspect =
-    entry && state ? (
+    entry && state && !categoriesOpen ? (
       <DefinitionInspector
         state={state}
         entry={entry}
         sourceApi={sourceApi}
+        meshApi={meshApi}
         createWorker={createWorker}
         loadViewer={loadViewer}
         pending={catalog.pending}
         modal={modal}
-        reviewMode={workspace === "Needs review"}
         error={catalog.error}
         onClose={() => setSelected("")}
         onEdit={() => setEditor("edit")}
-        onReview={setEditor}
-        onAction={(action) =>
-          void catalog
-            .execute({ kind: action, entryIds: [entry.id] })
-            .then((ok) => {
-              if (ok) setSelected("");
-            })
-        }
+        onGeometry={() => setEditor("geometry")}
       />
     ) : null;
   return (
-    <div className={`curated-app ${entry && !modal ? "has-definition" : ""}`}>
+    <div className={`curated-app ${entry && !modal && !categoriesOpen ? "has-definition" : ""}`}>
       <a className="skip-link" href="#library-content">
         Skip to library
       </a>
@@ -160,21 +134,24 @@ export function CatalogWorkspace({
       </div>
       <header className="workspace-header">
         <div>
-          <span className="brand-name">HEMY</span>
+          <Brand />
           <span className="header-divider" />
           <h1>Asset library</h1>
           <span className="workspace-tag">CURATED COLLECTION</span>
         </div>
         <span className="workspace-tag">LOCAL WORKSPACE</span>
       </header>
-      <CatalogSidebar
-        state={state}
-        workspace={workspace}
-        onWorkspace={navigate}
-        category={category}
-        onCategory={setCategory}
-      />
       <main id="library-content" className="curated-content">
+        <CatalogTabs onLibrary={navigate}
+          categoriesOpen={categoriesOpen} onCategories={() => setCategoriesOpen(true)} />
+        <div className={`catalog-tab-content ${categoriesOpen ? "managing-categories" : ""}`} role="region" aria-label="Library content">
+      {!categoriesOpen && <CatalogSidebar
+        state={state}
+        selectedCategories={selectedCategories}
+        onCategoriesFilter={setSelectedCategories}
+        categoriesOpen={categoriesOpen}
+      />}
+        <div className="catalog-browse-content">
         {availability.kind === "failed" && (
           <div className="inline-message" role="alert">
             Source availability could not be checked: {availability.message}
@@ -192,51 +169,42 @@ export function CatalogWorkspace({
           </div>
         )}
         {catalog.pending && <p role="status">Saving catalog…</p>}
+        {creationNotice && <p role="status" className="inline-message">{creationNotice}</p>}
         {!state && !catalog.error && <p role="status">Loading catalog…</p>}
-        {workspace === "Sources" ? (
-          <>
-            {analysis.error && <p role="alert">{analysis.error}</p>}
-            {analysis.notice && <p role="status">{analysis.notice}</p>}
-            <SourceWorkspace
-              dependencies={dependencies}
-              embedded
-              onImport={analysis.analyze}
-              importProgress={analysis.progress}
-              importSaving={analysis.saving}
-              onCancelImport={analysis.cancel}
-            />
-          </>
-        ) : workspace === "Categories" ? (
-          state && (
-            <CategoryEditor
-              state={state}
-              pending={catalog.pending}
-              onSave={catalog.execute}
-            />
-          )
-        ) : (
-          <>
+        {categoriesOpen && state && (
+          <section id="category-management" className="category-management" aria-label="Category settings">
+            <CategoryEditor state={state} pending={catalog.pending} onSave={catalog.execute} error={catalog.error} />
+          </section>
+        )}
+        {!categoriesOpen && <>
             <div className="catalog-title">
               <div>
                 <span className="eyebrow">
-                  {workspace === "Library"
-                    ? "REUSABLE ASSET DEFINITIONS"
-                    : "STAFF REVIEW"}
+                  REUSABLE ASSET DEFINITIONS
                 </span>
                 <h2>
-                  {category
-                    ? state?.categories.find((c) => c.id === category)?.name
-                    : workspace === "Library"
-                      ? "Your asset library"
-                      : "Needs review"}
+                  {selectedCategories?.length === 0
+                    ? "No categories selected"
+                    : selectedCategories?.length === 1
+                    ? state?.categories.find((c) => c.id === selectedCategories[0])?.name
+                    : selectedCategories && selectedCategories.length > 1
+                      ? `${selectedCategories.length} categories selected`
+                    : "Your asset library"}
                 </h2>
                 <p>
-                  {workspace === "Library"
-                    ? "Approved products and specification variants, across all sources."
-                    : "Resolve specifications, compare variants and approve ready definitions."}
+                  Reusable assets with geometry and metadata.
                 </p>
               </div>
-              <span className="count-token">{entries.length}</span>
+              <div className="catalog-title-actions">
+                <span className="count-token">{entries.length}</span>
+                <button
+                  className="primary"
+                  disabled={!state || catalog.pending}
+                  onClick={() => { setCreationNotice(""); setCreating(true); }}
+                >
+                  <FileUp size={18} aria-hidden="true" /> Create asset
+                </button>
+              </div>
             </div>
             <div className="toolbar">
               <label className="search">
@@ -266,78 +234,6 @@ export function CatalogWorkspace({
                 </button>
               </div>
             </div>
-            <div className="catalog-filters">
-              <label>
-                Source
-                <select
-                  value={source}
-                  onChange={(e) => setSource(e.target.value)}
-                >
-                  <option value="">All sources</option>
-                  {[
-                    ...new Map(
-                      state?.sources.map((s) => [s.modelId, s.sourceName]) ??
-                        [],
-                    ).entries(),
-                  ].map(([id, name]) => (
-                    <option key={id} value={id}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Definition kind
-                <select value={kind} onChange={(e) => setKind(e.target.value)}>
-                  <option value="">All kinds</option>
-                  <option value="generic">Generic specification</option>
-                  <option value="product">Product</option>
-                </select>
-              </label>
-              {workspace === "Needs review" && (
-                <label className="check">
-                  <input
-                    type="checkbox"
-                    checked={archived}
-                    onChange={(e) => {
-                      setArchived(e.target.checked);
-                      setSelected("");
-                    }}
-                  />
-                  Show archived
-                </label>
-              )}
-            </div>
-            {workspace === "Needs review" && entries.length > 0 && (
-              <div className="batch-bar">
-                <label className="check">
-                  <input
-                    type="checkbox"
-                    checked={checked.length === visibleEntries.length}
-                    onChange={(e) =>
-                      setChecked(
-                        e.target.checked
-                          ? visibleEntries.map((item) => item.id)
-                          : [],
-                      )
-                    }
-                  />
-                  Select all {visibleEntries.length} visible definitions
-                </label>
-                <button
-                  disabled={!checked.length || catalog.pending}
-                  onClick={() =>
-                    void catalog.execute({
-                      kind: archived ? "restore" : "approve",
-                      entryIds: checked,
-                    })
-                  }
-                >
-                  {archived ? "Restore selected" : "Approve selected"} (
-                  {checked.length})
-                </button>
-              </div>
-            )}
             {state && entries.length > 0 && (
               <nav className="catalog-pagination" aria-label="Definition pages">
                 <span role="status">
@@ -360,22 +256,14 @@ export function CatalogWorkspace({
                 </button>
               </nav>
             )}
+            <div className="definition-results" role="region" aria-label="Asset list" tabIndex={0}>
             {state && entries.length > 0 && (
               <DefinitionCards
                 state={state}
                 entries={visibleEntries}
                 availability={availability}
-                selected={selected}
-                checked={checked}
+                selected={selectedCardId}
                 mode={mode}
-                review={workspace === "Needs review"}
-                onCheck={(id) =>
-                  setChecked((all) =>
-                    all.includes(id)
-                      ? all.filter((v) => v !== id)
-                      : [...all, id],
-                  )
-                }
                 onSelect={(id, expanded) => {
                   setSelected(id);
                   setModal(expanded);
@@ -386,35 +274,59 @@ export function CatalogWorkspace({
               <div className="empty-state">
                 <Boxes size={44} strokeWidth={1} />
                 <h2>
-                  {workspace === "Library" &&
-                  !state.entries.some((e) => e.status === "approved")
-                    ? "Your approved library starts here"
+                  {!state.entries.some((e) => e.status !== "archived")
+                    ? "Your asset library starts here"
                     : "No matching definitions"}
                 </h2>
                 <p>
-                  Analyze an IFC source to create drafts, then review and
-                  approve reusable definitions.
+                  Upload a 3D model, fill in the asset details, then save it to your library.
                 </p>
                 <div className="action-row">
                   <button
                     className="primary"
-                    onClick={() => navigate("Sources")}
+                    disabled={catalog.pending}
+                    onClick={() => { setCreationNotice(""); setCreating(true); }}
                   >
-                    Go to Sources
-                  </button>
-                  <button onClick={() => navigate("Needs review")}>
-                    Review drafts
+                    Create asset
                   </button>
                 </div>
               </div>
             )}
-          </>
-        )}
+            </div>
+        </>}
+        </div>
+        </div>
       </main>
+      {creating && state && <AssetCreationDialog
+        categories={state.categories}
+        onGeometryFiles={files => { setCreating(false); setGeometryFiles(files); }}
+        sourceApi={sourceApi}
+        revision={state.revision}
+        execute={catalog.execute}
+        createWorker={createCreationWorker}
+        loadViewer={loadViewer}
+        onClose={submitted => {
+          setCreating(false);
+          if (submitted) setCreationNotice("Asset creation was submitted and may still finish. Check Library for the saved asset.");
+        }}
+        onSuccess={() => {
+          setCreating(false);
+          navigate();
+          setCreationNotice("Asset saved to your library.");
+        }}
+      />}
+      {geometryFiles && state && <UpdateGeometryDialog initialFiles={geometryFiles} categories={state.categories} sourceApi={sourceApi} meshApi={meshApi}
+        createWorker={createWorker} createDetailsWorker={createCreationWorker} loadViewer={loadViewer} pending={catalog.pending} error={catalog.error}
+        onClose={() => setGeometryFiles(null)} onSave={async action => {
+          const saved = await catalog.execute(action);
+          if (saved) { navigate(); setCreationNotice("Asset saved to your library."); }
+          return saved;
+        }} />}
       {!modal && inspect}
-      {modal && entry && (
+      {modal && entry && !categoriesOpen && (
         <Dialog
           title="Definition preview"
+          hideTitle
           onClose={() => setSelected("")}
           className="definition-preview-dialog"
         >
@@ -430,19 +342,12 @@ export function CatalogWorkspace({
           pending={catalog.pending}
           onSave={catalog.execute}
           onClose={() => setEditor(null)}
+          onCategories={() => { setEditor(null); setCategoriesOpen(true); }}
         />
       )}{" "}
-      {entry && state && editor && editor !== "edit" && (
-        <ReviewDialog
-          error={catalog.error}
-          key={`${entry.id}:${editor}`}
-          mode={editor}
-          state={state}
-          entry={entry}
-          pending={catalog.pending}
-          onSave={catalog.execute}
-          onClose={() => setEditor(null)}
-        />
+      {entry && editor === "geometry" && (
+        <UpdateGeometryDialog entry={entry} sourceApi={sourceApi} meshApi={meshApi} createWorker={createWorker} loadViewer={loadViewer}
+          pending={catalog.pending} error={catalog.error} onSave={catalog.execute} onClose={() => setEditor(null)} />
       )}
     </div>
   );

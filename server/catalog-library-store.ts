@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { ZodError } from "zod";
 import {
@@ -19,6 +19,9 @@ import type { LibraryModel } from "../shared/contracts.js";
 import { LibraryError, LibraryStore } from "./library-store.js";
 import { migrateCatalog } from "../shared/catalog-publication.js";
 import { changedReferences } from "../shared/catalog-references.js";
+import { sourceObservationKey } from "../shared/catalog-source-identity.js";
+import { GeometryStore } from "./geometry-store.js";
+import { replaceFile } from "./replace-file.js";
 
 function missingFile(error: unknown): boolean {
   return error instanceof Error && "code" in error && error.code === "ENOENT";
@@ -34,10 +37,42 @@ function sameMembers(left: number[], right: number[]): boolean {
     left.every((id) => rightMembers.has(id))
   );
 }
+function sameIssues(left: string[], right: string[]): boolean {
+  return left.length === right.length && new Set(right).size === right.length &&
+    left.every(issue => right.includes(issue));
+}
 function validateSnapshot(
   snapshot: LibrarySnapshot,
   model: LibraryModel,
 ): void {
+  if (snapshot.analysisVersion === 3) {
+    const index = model.creationIndex;
+    if (
+      !index ||
+      index.modelId !== model.id ||
+      index.fingerprint !== model.fingerprint ||
+      snapshot.sourceName !== model.name ||
+      snapshot.types.length !== index.candidates.length
+    )
+      invalidSource("Import the complete analysis of the current creation index.");
+    for (const observation of snapshot.types) {
+      const candidate = index.candidates.find(
+        candidate => candidate.key === sourceObservationKey(observation),
+      );
+      if (
+        !candidate ||
+        candidate.name !== observation.name ||
+        candidate.ifcClass !== observation.ifcClass ||
+        !sameMembers(candidate.occurrenceIds, observation.occurrenceIds) ||
+        candidate.categories.length !== observation.categories.length ||
+        !sameIssues(candidate.classificationIssues, observation.classificationIssues ?? []) ||
+        new Set(observation.categories).size !== observation.categories.length ||
+        !observation.categories.every(category => candidate.categories.includes(category))
+      )
+        invalidSource("Snapshot candidates, labels and occurrence memberships must match the current creation index.");
+    }
+    return;
+  }
   const index = model.index;
   if (!index) invalidSource("The source index is unavailable.");
   if (
@@ -78,20 +113,22 @@ function validateReferences(
       (source) => source.id === reference.sourceId,
     );
     const model = models.find((model) => model.id === source?.modelId);
-    const type = model?.index?.types.find(
-      (type) => type.typeGlobalId === source?.observation.typeGlobalId,
-    );
+    const candidate = source?.analysisVersion === 3
+      ? model?.creationIndex?.candidates.find(candidate => candidate.key === sourceObservationKey(source.observation))
+      : model?.index?.types.find(type => type.typeGlobalId === source?.observation.typeGlobalId);
     if (
       !source ||
       !source.current ||
       source.fingerprint !== reference.fingerprint ||
-      !type ||
-      type.modelId !== source.modelId ||
-      !sameMembers(source.observation.occurrenceIds, type.occurrenceIds) ||
-      reference.occurrenceIds.some((id) => !type.occurrenceIds.includes(id))
+      !candidate ||
+      model?.id !== source.modelId ||
+      model.fingerprint !== reference.fingerprint ||
+      (source.analysisVersion === 3 ? model.creationIndex?.fingerprint : model.index?.fingerprint) !== reference.fingerprint ||
+      !sameMembers(source.observation.occurrenceIds, candidate.occurrenceIds) ||
+      reference.occurrenceIds.some((id) => !candidate.occurrenceIds.includes(id))
     )
       invalidSource(
-        "Confirmed geometry references must identify current indexed type occurrences.",
+        "Confirmed geometry references must identify current indexed candidate occurrences.",
       );
   }
 }
@@ -147,12 +184,29 @@ export class CatalogLibraryStore {
         if (next !== this.state) await this.commit(next);
         return structuredClone(this.state);
       };
-      if (command.kind === "import") {
+      if (command.kind === "update-geometry" || command.kind === "create-asset") {
+        const reference = command.geometryReference;
+        if ("kind" in reference) {
+          await new GeometryStore(this.dataRoot).read(reference.geometryId);
+          return publish();
+        }
+        return this.requireModels().withCurrentModels(
+          [{ modelId: reference.modelId, fingerprint: reference.fingerprint, indexPurpose: "creation" }],
+          async (models) => {
+            const candidate = models[0]?.creationIndex?.candidates.find(candidate => candidate.key === reference.candidateKey);
+            if (!candidate?.occurrenceIds.includes(reference.occurrenceId))
+              invalidSource("Choose geometry from the uploaded IFC file's current asset index.");
+            return publish();
+          },
+        );
+      }
+      if (command.kind === "import" || command.kind === "import-selected" || command.kind === "import-asset") {
         return this.requireModels().withCurrentModels(
           [
             {
               modelId: command.snapshot.modelId,
               fingerprint: command.snapshot.fingerprint,
+              indexPurpose: command.snapshot.analysisVersion === 3 ? "creation" : "browse",
             },
           ],
           async (models) => {
@@ -180,7 +234,8 @@ export class CatalogLibraryStore {
           return {
             modelId: source.modelId,
             fingerprint: reference.fingerprint,
-          };
+            indexPurpose: source.analysisVersion === 3 ? "creation" : "browse",
+          } satisfies Parameters<LibraryStore["withCurrentModels"]>[0][number];
         });
         return this.requireModels().withCurrentModels(
           requirements,
@@ -213,7 +268,7 @@ export class CatalogLibraryStore {
       await writeFile(temporary, JSON.stringify(state, null, 2), {
         flag: "wx",
       });
-      await rename(temporary, join(this.dataRoot, "catalog-library.json"));
+      await replaceFile({ temporary, destination: join(this.dataRoot, "catalog-library.json") });
       this.state = state;
     } finally {
       await unlink(temporary).catch((error) => {
