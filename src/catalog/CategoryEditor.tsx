@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { ArrowUpRight, Plus } from "lucide-react";
 import { AssetClassificationFields } from "./AssetClassificationFields.js";
 import { Dialog } from "../components/Dialog.js";
+import { ifcClassLabel } from "../../shared/ifc-class-snapshot.js";
 import type {
   CatalogLibrary,
   CatalogCategory,
@@ -59,7 +60,7 @@ export function CategoryEditor({
                 </button>
                 <span>{category.name}</span>
               </div></th>
-              <td>{ifcClass}</td><td>{system}</td>
+              <td>{ifcClassLabel(ifcClass)}</td><td>{system}</td>
             </tr>)}
             {!visibleRows.length && <tr><td colSpan={3} className="category-table-empty">{search ? "No categories match your search." : "No categories yet. Add a category to get started."}</td></tr>}
           </tbody>

@@ -24,7 +24,7 @@ export function createIfcClassReader(fetcher: typeof fetch = fetch) {
       offset += page.classes.length;
       for (const item of page.classes) {
         const value = item.code.toUpperCase();
-        if (entityCodes.has(value)) options.set(value, { value, label: value, description: item.name });
+        if (entityCodes.has(value)) options.set(value, { value, label: item.code, description: item.name });
       }
     }
     const result = [...options.values()].sort((a, b) => a.value.localeCompare(b.value));

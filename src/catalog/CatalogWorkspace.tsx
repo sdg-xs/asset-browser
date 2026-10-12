@@ -47,7 +47,7 @@ export function CatalogWorkspace({
     [selected, setSelected] = useState(""),
     [modal, setModal] = useState(false),
     [editor, setEditor] = useState<
-      "edit" | "geometry" | null
+      "edit" | null
     >(null);
   const [page, setPage] = useState(0);
   const [creating, setCreating] = useState(false);
@@ -119,7 +119,6 @@ export function CatalogWorkspace({
         error={catalog.error}
         onClose={() => setSelected("")}
         onEdit={() => setEditor("edit")}
-        onGeometry={() => setEditor("geometry")}
       />
     ) : null;
   return (
@@ -342,12 +341,7 @@ export function CatalogWorkspace({
           pending={catalog.pending}
           onSave={catalog.execute}
           onClose={() => setEditor(null)}
-          onCategories={() => { setEditor(null); setCategoriesOpen(true); }}
         />
-      )}{" "}
-      {entry && editor === "geometry" && (
-        <UpdateGeometryDialog entry={entry} sourceApi={sourceApi} meshApi={meshApi} createWorker={createWorker} loadViewer={loadViewer}
-          pending={catalog.pending} error={catalog.error} onSave={catalog.execute} onClose={() => setEditor(null)} />
       )}
     </div>
   );

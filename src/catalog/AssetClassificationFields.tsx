@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { SearchableSelect } from "../components/SearchableSelect.js";
-import { ifcClassSnapshot } from "../../shared/ifc-class-snapshot.js";
+import { ifcClassLabel, ifcClassSnapshot } from "../../shared/ifc-class-snapshot.js";
 import { nsTfmSystemOptions } from "../../shared/ns-tfm-system-options.js";
 import { ifcDictionaryUri, nsTfmGuideUrl } from "../../shared/asset-classifications.js";
 import { readIfcClasses } from "./classification-api.js";
@@ -19,10 +19,13 @@ export function AssetClassificationFields({ ifcClass, system, onIfcClass, onSyst
       .catch(() => { if (active) setOffline(true); });
     return () => { active = false; };
   }, []);
+  const classOptions = !ifcClass || classes.some(option => option.value === ifcClass)
+    ? classes
+    : [{ value: ifcClass, label: ifcClassLabel(ifcClass), description: "" }, ...classes];
   return <>
     <div className="classification-field">
       <span>IFC Class</span>
-      <SearchableSelect label="IFC Class" value={ifcClass} options={classes} onChange={onIfcClass} />
+      <SearchableSelect label="IFC Class" value={ifcClass} options={classOptions} onChange={onIfcClass} />
       <small><a href={`https://search.bsdd.buildingsmart.org${new URL(ifcDictionaryUri).pathname}`} target="_blank" rel="noreferrer">buildingSMART bSDD · IFC 4.3</a>{offline && " · Saved list"}</small>
     </div>
     <div className="classification-field">

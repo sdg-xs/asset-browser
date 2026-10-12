@@ -1,310 +1,69 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import type {
   CatalogLibrary,
   EditableDefinition,
   LibraryEntry,
   NormalizedValue,
 } from "../../shared/catalog-library.js";
-import { visiblePropertySet } from "../property-display.js";
 import { Dialog } from "../components/Dialog.js";
-import { entryFieldSuggestions, fieldLabel, valueText, visibleParameter } from "./display.js";
+import { AssetClassificationFields } from "./AssetClassificationFields.js";
+import { entryClassifications } from "./display.js";
 import type { CatalogAction } from "./api.js";
-export function EntryEditor({
-  state,
-  entry,
-  pending,
-  onSave,
-  onClose,
-  error,
-  onCategories,
-}: {
+
+export function EntryEditor({ state, entry, pending, onSave, onClose, error }: {
   state: CatalogLibrary;
   entry: LibraryEntry;
   pending: boolean;
   error: string;
   onSave(action: CatalogAction): Promise<boolean>;
   onClose(): void;
-  onCategories(): void;
 }) {
-  const [definition, setDefinition] = useState<EditableDefinition>(() =>
-    structuredClone(entry.definition),
-  );
-  const [customName, setCustomName] = useState("");
-  const update = (patch: Partial<EditableDefinition>) =>
-    setDefinition((d) => ({ ...d, ...patch }));
-  const specify = (key: string, value: NormalizedValue) =>
-    setDefinition((d) => ({
-      ...d,
-      specifications: { ...d.specifications, [key]: value },
+  const [draft, setDraft] = useState<{
+    definition: EditableDefinition;
+    ifcClass: string;
+    system: string;
+  }>(() => ({
+    definition: structuredClone(entry.definition),
+    ...entryClassifications(state, entry),
+  }));
+  const classify = (field: "ifcClass" | "system", value: string) => {
+    const key = field === "ifcClass" ? "IFC Class" : "System";
+    const specification: NormalizedValue = value
+      ? { kind: "text", value, unit: null }
+      : { kind: "missing" };
+    setDraft(previous => ({
+      ...previous,
+      [field]: value,
+      definition: {
+        ...previous.definition,
+        specifications: { ...previous.definition.specifications, [key]: specification },
+      },
     }));
-  const suggestions = entryFieldSuggestions(state, entry);
-  return (
-    <Dialog
-      title="Edit definition"
-      onClose={onClose}
-      busy={pending}
-      className="author-dialog"
-    >
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          void onSave({ kind: "edit", entryId: entry.id, definition }).then(
-            (ok) => {
-              if (ok) onClose();
-            },
-          );
-        }}
-      >
-        {error && <p role="alert">{error}</p>}
-        <fieldset className="authoring-fields" disabled={pending}>
-          <p>
-            Save changes directly to your library. Your edits stay here
-            if another staff member changes the catalog.
-          </p>
-          <div className="form-grid">
-            <label>
-              Name
-              <input
-                required
-                value={definition.name}
-                onChange={(e) => update({ name: e.target.value })}
-              />
-            </label>
-            <label>
-              Category
-              <select
-                aria-label="Category"
-                aria-describedby="category-classification-help"
-                value={definition.categoryId ?? ""}
-                onChange={(e) => update({ categoryId: e.target.value || null })}
-              >
-                <option value="">Choose category</option>
-                {[...state.categories].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" })).map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-              <small id="category-classification-help">Canonical Generic Hard Asset classification</small>
-            </label>
-          </div>
-          <p>Missing a category? <button type="button" onClick={onCategories}>Go to Categories</button> to add the canonical category, then return to this asset. Save your changes before leaving.</p>
-          <label>
-            FDVU Documentation
-            <input type="url" aria-label="FDVU Documentation" value={definition.fdvuDocumentationUrl ?? ""} placeholder="https://…"
-              onChange={event => update({ fdvuDocumentationUrl: event.target.value })} />
-            <small>Optional link to the asset’s FDVU documentation.</small>
-          </label>
-          <details className="definition-additional-details">
-            <summary>Additional definition details</summary>
-            <div className="form-grid">
-            <label>
-              Family
-              <input
-                value={definition.family ?? ""}
-                onChange={(e) => update({ family: e.target.value || null })}
-              />
-            </label>
-            <label className="wide">
-              Description
-              <textarea
-                value={definition.description}
-                onChange={(e) => update({ description: e.target.value })}
-              />
-            </label>
-            <label className="wide">
-              Tags, separated by commas
-              <input
-                value={definition.tags.join(", ")}
-                onChange={(e) =>
-                  update({
-                    tags: e.target.value.split(",").map((s) => s.trim()),
-                  })
-                }
-              />
-            </label>
-          </div>
-          </details>
-          {definition.kind === "product" && (["manufacturer", "model"] as const).map((key) => (
-            <fieldset key={key}>
-              <legend>
-                {key === "manufacturer" ? "Manufacturer" : "Model"}
-              </legend>
-              <input
-                aria-label={key === "manufacturer" ? "Manufacturer" : "Model"}
-                value={definition[key].value}
-                onChange={(e) =>
-                  update({ [key]: { value: e.target.value, confirmed: false } })
-                }
-              />
-              <label className="check">
-                <input
-                  type="checkbox"
-                  checked={definition[key].confirmed}
-                  onChange={(e) =>
-                    update({
-                      [key]: {
-                        ...definition[key],
-                        confirmed: e.target.checked,
-                      },
-                    })
-                  }
-                />
-                Staff confirmed {key}
-              </label>
-            </fieldset>
-          ))}
-          <h3>Curated specifications</h3>
-          <p>
-            Numeric source values retain their actual normalized units. Unknown
-            is an explicit resolution, never zero.
-          </p>
-          {Object.entries(definition.specifications).filter(([key]) => visibleParameter(state, key, definition.categoryId)).map(([key, value]) => (
-            <div className="spec-edit" key={key}>
-              <label>
-                {fieldLabel(state, key, definition.categoryId)}
-                <SpecificationInput
-                  value={value}
-                  onChange={(next) => specify(key, next)}
-                />
-              </label>
-              <button
-                type="button"
-                onClick={() =>
-                  setDefinition((d) => {
-                    const specifications = { ...d.specifications };
-                    delete specifications[key];
-                    return { ...d, specifications };
-                  })
-                }
-              >
-                Remove override
-              </button>
-            </div>
-          ))}
-          <div className="spec-edit">
-            <label>
-              New specification label
-              <input
-                value={customName}
-                onChange={(e) => setCustomName(e.target.value)}
-              />
-            </label>
-            <button
-              type="button"
-              disabled={!customName.trim()}
-              onClick={() => {
-                specify(customName.trim(), {
-                  kind: "text",
-                  value: "",
-                  unit: null,
-                });
-                setCustomName("");
-              }}
-            >
-              Add specification
-            </button>
-          </div>
-          <h3>Source properties</h3>
-          {suggestions.map((s) => (
-            <section className="suggestion" key={s.key}>
-              <strong>{fieldLabel(state, s.key, definition.categoryId)}</strong>
-              <span className="badge">
-                {Object.hasOwn(definition.specifications, s.key)
-                  ? definition.specifications[s.key]?.kind === "missing" ? "Unknown" : "Curated value"
-                  : s.status === "conflicting" ? "Conflicting values"
-                    : s.status === "consistent" ? "Source value" : "Missing values"}
-              </span>
-              <div className="action-row">
-                {s.values.map((v, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    aria-label={`Use source value ${fieldLabel(state, s.key, definition.categoryId)}: ${valueText(v)}`}
-                    onClick={() => specify(s.key, v)}
-                  >
-                    {valueText(v)}
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => specify(s.key, { kind: "missing" })}
-                >
-                  Resolve as unknown
-                </button>
-              </div>
-              {s.missingOccurrences.length > 0 && (
-                <small>
-                  {s.missingOccurrences.length} occurrences have no value.
-                </small>
-              )}
-            </section>
-          ))}
-          <details>
-            <summary>Source details</summary>
-            <h4>Unconfirmed product hints</h4>
-            <p>These remain suggestions until entered and confirmed above.</p>
-            {state.sources
-              .filter((s) =>
-                entry.sourceReferences.some((r) => r.sourceId === s.id),
-              )
-              .flatMap((s) =>
-                s.observation.fields
-                  .filter((f) => visiblePropertySet(f.pset) && /manufacturer|model|product|sku/i.test(f.name))
-                  .map((f) => (
-                    <p key={`${s.id}:${f.key}`}>
-                      {f.name}:{" "}
-                      {f.values.map((v) => v.rawValue || "(blank)").join(" / ")}
-                    </p>
-                  )),
-              )}
-          </details>
-          <div className="dialog-actions">
-            <button type="button" onClick={onClose} disabled={pending}>
-              Cancel
-            </button>
-            <button className="primary" disabled={pending}>
-              Save definition
-            </button>
-          </div>
-        </fieldset>
-      </form>
-    </Dialog>
-  );
-}
-
-function SpecificationInput({
-  value,
-  onChange,
-}: {
-  value: NormalizedValue;
-  onChange(value: NormalizedValue): void;
-}) {
-  const format = useRef(value);
-  if (value.kind !== "missing") format.current = value;
-  const current = format.current;
-  return (
-    <>
-      <input
-        type={current.kind === "number" ? "number" : "text"}
-        step="any"
-        value={value.kind === "missing" ? "" : value.value}
-        onChange={(event) => {
-          const text = event.target.value;
-          onChange(
-            !text
-              ? { kind: "missing" }
-              : current.kind === "number"
-                ? { ...current, value: Number(text) }
-                : {
-                    kind: "text",
-                    value: text,
-                    unit: current.kind === "text" ? current.unit : null,
-                  },
-          );
-        }}
-      />
-      <span>{current.kind === "missing" ? "Unknown" : current.unit}</span>
-    </>
-  );
+  };
+  return <Dialog title="Edit definition" onClose={onClose} busy={pending} className="author-dialog">
+    <form onSubmit={event => {
+      event.preventDefault();
+      if (pending || !draft.definition.name.trim()) return;
+      void onSave({ kind: "edit", entryId: entry.id,
+        definition: { ...draft.definition, name: draft.definition.name.trim() },
+      }).then(ok => { if (ok) onClose(); });
+    }}>
+      {error && <p role="alert">{error}</p>}
+      <fieldset className="authoring-fields" disabled={pending}>
+        <label>Asset name
+          <input required aria-label="Asset name" value={draft.definition.name}
+            onChange={event => {
+              const name = event.target.value;
+              setDraft(previous => ({ ...previous, definition: { ...previous.definition, name } }));
+            }} />
+        </label>
+        <AssetClassificationFields ifcClass={draft.ifcClass} system={draft.system}
+          onIfcClass={value => classify("ifcClass", value)} onSystem={value => classify("system", value)} />
+        <div className="dialog-actions">
+          <button type="button" onClick={onClose} disabled={pending}>Cancel</button>
+          <button className="primary" disabled={pending || !draft.definition.name.trim()}>Save definition</button>
+        </div>
+      </fieldset>
+    </form>
+  </Dialog>;
 }

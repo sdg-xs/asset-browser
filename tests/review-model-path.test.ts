@@ -16,7 +16,7 @@ it("resolves a persisted upload relative to the managed uploads folder", () => {
 
 it("keeps legacy absolute model paths for both model sources", () => {
   const path = resolve("legacy-device", "model.ifc");
-  for (const source of ["existing", "upload"]) {
+  for (const source of ["existing", "upload"] as const) {
     expect(reviewModelPath({ path, model: { source } }, roots)).toBe(path);
   }
 });

@@ -147,7 +147,7 @@ describe("curated catalog", () => {
     }
     fireEvent.click(screen.getByRole("button", { name: "Open Fire equipment category" }));
     const dialog = screen.getByRole("dialog", { name: "Fire equipment category" });
-    expect(within(dialog).getByLabelText("IFC Class")).toHaveProperty("value", "IFCALARM");
+    expect(within(dialog).getByLabelText("IFC Class")).toHaveProperty("value", "IfcAlarm");
     fireEvent.click(within(dialog).getByRole("button", { name: "Close dialog" }));
     fireEvent.change(search, { target: { value: "missing category" } });
     expect(within(table).queryAllByRole("rowheader")).toHaveLength(0);
@@ -183,7 +183,7 @@ describe("curated catalog", () => {
     const table = screen.getByRole("table", { name: "Generic Hard Asset categories" });
     const row = within(table).getByRole("row", { name: /Cabinets/ });
     expect(within(row).getAllByRole("cell").map(cell => cell.textContent)).toEqual([
-      "IFCALARM", "Category system",
+      "IfcAlarm", "Category system",
     ]);
     const unassigned = within(table).getByRole("row", { name: /Unassigned category/ });
     expect(within(unassigned).getAllByRole("cell").map(cell => cell.textContent)).toEqual(["—", "—"]);
@@ -200,8 +200,8 @@ describe("curated catalog", () => {
     fireEvent.click(add);
     const dialog = screen.getByRole("dialog", { name: "Add category" });
     fireEvent.change(within(dialog).getByLabelText("Category name"), { target: { value: "Fire equipment" } });
-    chooseClassification("IFC Class", "IFCALARM");
-    chooseClassification("System", "5420 Brannalarmsystemer");
+    chooseClassification("IFC Class", "IfcAlarm");
+    chooseClassification("System", "5420 Fire alarm systems");
     fireEvent.click(within(dialog).getByRole("button", { name: "Save category" }));
     await within(dialog).findByText("Category saved.");
     expect(f.getState().categories.find(category => category.name === "Fire equipment")).toMatchObject({ ifcClass: "IFCALARM", system: "5420 Brannalarmsystemer" });
@@ -210,8 +210,8 @@ describe("curated catalog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open Fire equipment category" }));
     const details = screen.getByRole("dialog", { name: "Fire equipment category" });
     expect(within(details).getByLabelText("Category name")).toHaveProperty("value", "Fire equipment");
-    expect(within(details).getByLabelText("IFC Class")).toHaveProperty("value", "IFCALARM");
-    expect(within(details).getByLabelText("System")).toHaveProperty("value", "5420 Brannalarmsystemer");
+    expect(within(details).getByLabelText("IFC Class")).toHaveProperty("value", "IfcAlarm");
+    expect(within(details).getByLabelText("System")).toHaveProperty("value", "5420 Fire alarm systems");
     fireEvent.click(within(details).getByRole("button", { name: "Close dialog" }));
     fireEvent.click(screen.getByRole("button", { name: "Library" }));
     expect(screen.getByRole("checkbox", { name: "Fire equipment" })).toBeTruthy();
@@ -231,24 +231,45 @@ describe("curated catalog", () => {
     expect(within(dialog).getByLabelText("Category name")).toHaveProperty("value", "Changed name");
     expect(dialog).toHaveProperty("open", true);
   });
-  it("keeps optional FDVU documentation editable without displaying it in Parameters", async () => {
+  it("edits only asset name and classifications while preserving hidden definition data", async () => {
     const f = fixture();
+    const entry = required(f.getState().entries[0]);
+    await f.api.execute({ kind: "edit", expectedRevision: f.getState().revision, entryId: entry.id,
+      definition: { ...entry.definition, description: "Saved description", family: "Cabinets", tags: ["stored"],
+        fdvuDocumentationUrl: "https://example.com/fdvu.pdf", specifications: { width: { kind: "number", value: 0.6, unit: "m" } } } });
+    const original = structuredClone(required(f.getState().entries[0]).definition);
     render(<CatalogWorkspace catalogApi={f.api} sourceApi={f.sources} />);
     fireEvent.click(await screen.findByRole("button", { name: "Inspect Cabinet" }));
-    expect(screen.queryByText("FDVU Documentation")).toBeNull();
-    expect(screen.queryByRole("link", { name: "Open FDVU documentation" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Edit definition" }));
-    const input = screen.getByLabelText("FDVU Documentation");
-    expect(input).toHaveProperty("value", "");
-    fireEvent.change(input, { target: { value: "https://example.com/fdvu.pdf" } });
+    const dialog = screen.getByRole("dialog", { name: "Edit definition" });
+    expect(within(dialog).getAllByRole("textbox").map(input => input.getAttribute("aria-label"))).toEqual(["Asset name"]);
+    expect(within(dialog).getAllByRole("combobox").map(input => input.getAttribute("aria-label"))).toEqual(["IFC Class", "System"]);
+    expect(within(dialog).getByLabelText("IFC Class")).toHaveProperty("value", "IfcFurnitureType");
+    expect(within(dialog).queryByLabelText("Category")).toBeNull();
+    expect(within(dialog).queryByLabelText("FDVU Documentation")).toBeNull();
+    expect(within(dialog).queryByText("Source properties")).toBeNull();
+    expect(within(dialog).queryByText("Additional definition details")).toBeNull();
+    fireEvent.change(within(dialog).getByLabelText("Asset name"), { target: { value: "Updated cabinet" } });
+    chooseClassification("IFC Class", "IfcAlarm");
+    chooseClassification("System", "5420 Fire alarm systems");
     fireEvent.click(screen.getByRole("button", { name: "Save definition" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    expect(f.getState().entries[0]?.definition.fdvuDocumentationUrl).toBe("https://example.com/fdvu.pdf");
-    expect(screen.queryByText("FDVU Documentation")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Preview Cabinet" }));
-    const preview = screen.getByRole("dialog", { name: "Definition preview" });
-    expect(within(preview).queryByText("FDVU Documentation")).toBeNull();
-    expect(within(preview).queryByRole("link", { name: "Open FDVU documentation" })).toBeNull();
+    expect(f.getState().entries[0]?.definition).toEqual({ ...original, name: "Updated cabinet", specifications: {
+      ...original.specifications,
+      "IFC Class": { kind: "text", value: "IFCALARM", unit: null },
+      System: { kind: "text", value: "5420 Brannalarmsystemer", unit: null },
+    } });
+    fireEvent.click(screen.getByRole("button", { name: "Edit definition" }));
+    chooseClassification("IFC Class", "");
+    chooseClassification("System", "");
+    fireEvent.click(screen.getByRole("button", { name: "Save definition" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(f.getState().entries[0]?.definition.specifications).toEqual({ ...original.specifications,
+      "IFC Class": { kind: "missing" }, System: { kind: "missing" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Edit definition" }));
+    expect(screen.getByLabelText("IFC Class")).toHaveProperty("value", "");
+    expect(screen.getByLabelText("System")).toHaveProperty("value", "");
   });
   it("filters saved assets by multiple checked categories and resets to all", async () => {
     const f = fixture(true);
@@ -320,17 +341,25 @@ describe("curated catalog", () => {
     expect(within(dialog).queryByText("Confirmed field mappings")).toBeNull();
     expect(within(dialog).queryByText("Suggested source properties")).toBeNull();
     expect(within(dialog).getByLabelText("IFC Class")).toHaveProperty("value", "");
-    chooseClassification("IFC Class", "IFCFURNITURE");
-    chooseClassification("System", "5420 Brannalarmsystemer");
+    chooseClassification("IFC Class", "IfcFurniture");
+    chooseClassification("System", "5420 Fire alarm systems");
+    const systemPicker = within(dialog).getByRole("combobox", { name: "System" });
+    fireEvent.focus(systemPicker);
+    fireEvent.change(systemPicker, { target: { value: "brannalarm" } });
+    const fireSystem = within(dialog).getByRole("option", { name: "5420 Fire alarm systems" });
+    expect(fireSystem.querySelector("span")?.textContent).toBe("5420 Fire alarm systems");
+    expect(fireSystem.querySelector("small")?.textContent).toBe("Brannalarmsystemer");
+    fireEvent.click(fireSystem);
+    expect(systemPicker).toHaveProperty("value", "5420 Fire alarm systems");
     fireEvent.click(within(dialog).getByRole("button", { name: "Save category" }));
     await within(dialog).findByText("Category saved.");
     fireEvent.click(within(dialog).getByRole("button", { name: "Close dialog" }));
     const table = screen.getByRole("table", { name: "Generic Hard Asset categories" });
-    expect(within(table).getByText("IFCFURNITURE")).toBeTruthy();
+    expect(within(table).getByText("IfcFurniture")).toBeTruthy();
     expect(within(table).getByText("5420 Brannalarmsystemer")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Open Cabinets category" }));
     dialog = screen.getByRole("dialog", { name: "Cabinets category" });
-    expect(within(dialog).getByLabelText("IFC Class")).toHaveProperty("value", "IFCFURNITURE");
+    expect(within(dialog).getByLabelText("IFC Class")).toHaveProperty("value", "IfcFurniture");
     chooseClassification("IFC Class", "");
     chooseClassification("System", "");
     fireEvent.click(within(dialog).getByRole("button", { name: "Save category" }));
@@ -365,7 +394,7 @@ describe("curated catalog", () => {
     expect(f.api.execute).not.toHaveBeenCalled();
     chooseClassification("Asset category", category.name);
     fireEvent.change(screen.getByLabelText("Asset name"), { target: { value: "Reference asset" } });
-    expect(screen.getByLabelText("IFC Class")).toHaveProperty("value", "IFCBUILDINGELEMENTPROXY");
+    expect(screen.getByLabelText("IFC Class")).toHaveProperty("value", "IfcBuildingElementProxy");
     expect(screen.getByLabelText("IFC Class")).toHaveProperty("readOnly", true);
     expect(screen.getByLabelText("System")).toHaveProperty("value", "5420 Brannalarmsystemer");
     expect(screen.getByLabelText("System")).toHaveProperty("readOnly", true);
@@ -392,60 +421,6 @@ describe("curated catalog", () => {
     expect(screen.getByRole("button", { name: "Create asset" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Needs review" })).toBeNull();
   });
-  it("previews uploaded IFC geometry before saving and retains the approved asset definition", async () => {
-    const f = fixture(true);
-    const original = structuredClone(required(f.getState().entries[0]));
-    const model = sourceModel();
-    model.id = "00000000-0000-4000-8000-000000000099";
-    model.name = "Replacement.ifc";
-    model.fingerprint = "replacement";
-    model.creationIndex = { schemaVersion: 1, modelId: model.id, fingerprint: model.fingerprint,
-      candidates: [
-        { key: "type:replacement", identity: { kind: "type", globalId: "replacement" }, name: "Replacement cabinet", ifcClass: "IFCWALLTYPE", categories: [], classificationIssues: [], occurrenceIds: [99], representativeId: 99 },
-        { key: "type:empty", identity: { kind: "type", globalId: "empty" }, name: "Empty geometry", ifcClass: "IFCWALLTYPE", categories: [], classificationIssues: [], occurrenceIds: [100], representativeId: 100 },
-      ],
-      stats: { elements: 2, candidates: 2, classified: 0, unclassified: 2, untyped: 0 },
-    };
-    let uploaded = false;
-    f.sources.upload = vi.fn(async () => { uploaded = true; return model; });
-    f.sources.list = vi.fn(async () => uploaded ? [model] : []);
-    f.sources.saveCreationIndex = vi.fn(async index => index);
-    const geometry = { meshes: [{ positions: new Float32Array([0, 0, 0]), normals: new Float32Array([0, 1, 0]), indices: new Uint32Array([0]), transform: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], color: [1, 1, 1, 1] }] };
-    const pendingGeometry = deferred<typeof geometry>();
-    render(<CatalogWorkspace catalogApi={f.api} sourceApi={f.sources} createWorker={() => ({
-      ...previewWorker(model), readGeometry: vi.fn(async ({ elementId }) => elementId === 100 ? { meshes: [] } : pendingGeometry.promise),
-    })} loadViewer={async () => ({ default: () => <div>Replacement geometry preview</div> })} />);
-    fireEvent.click(await screen.findByRole("button", { name: "Inspect Cabinet" }));
-    expect(screen.queryByRole("button", { name: "Compare duplicates" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Split variants" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Archive definition" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Update geometry" }));
-    fireEvent.change(screen.getByLabelText("3D model files"), { target: { files: [new File(["IFC"], "Replacement.ifc")] } });
-    await screen.findByLabelText("Geometry asset");
-    const uploadDialog = screen.getByRole("dialog", { name: "Update geometry" });
-    expect(within(uploadDialog).getByRole("button", { name: "Save geometry" })).toHaveProperty("disabled", true);
-    expect(f.api.execute).not.toHaveBeenCalled();
-    await act(async () => pendingGeometry.resolve(geometry));
-    await within(uploadDialog).findByText("Replacement geometry preview");
-    expect(f.getState().entries[0]).toEqual(original);
-    fireEvent.change(screen.getByLabelText("Geometry asset"), { target: { value: "type:empty" } });
-    await within(uploadDialog).findByText(/This asset has no preview geometry/);
-    expect(within(uploadDialog).getByRole("button", { name: "Save geometry" })).toHaveProperty("disabled", true);
-    expect(f.api.execute).not.toHaveBeenCalled();
-    fireEvent.change(screen.getByLabelText("Geometry asset"), { target: { value: "type:replacement" } });
-    await within(uploadDialog).findByText("Replacement geometry preview");
-    fireEvent.click(screen.getByRole("button", { name: "Save geometry" }));
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Update geometry" })).toBeNull());
-    const entry = required(f.getState().entries[0]);
-    expect(entry.definition).toEqual(original.definition);
-    expect(entry.publication).toEqual(original.publication);
-    expect(entry.status).toBe("approved");
-    expect(entry.sourceReferences).toEqual(original.sourceReferences);
-    expect(entry.geometryReference).toEqual({ modelId: model.id, fingerprint: model.fingerprint, candidateKey: "type:replacement", occurrenceId: 99 });
-    expect(f.getState().entries).toHaveLength(1);
-    expect(f.sources.upload).toHaveBeenCalledTimes(1);
-    expect(await screen.findByText("Replacement geometry preview")).toBeTruthy();
-  });
   it("keeps Library cards free of parameters and shows IFC Class and System in the inspector", async () => {
     const f = fixture(true);
     const state = structuredClone(f.getState());
@@ -467,13 +442,17 @@ describe("curated catalog", () => {
     expect(screen.getByRole("img", { name: "Fire-related asset" })).toBeTruthy();
     fireEvent.click(card);
     const inspector = screen.getByRole("complementary", { name: "Definition inspector" });
-    expect(within(inspector).getByText("IFCFURNITURETYPE")).toBeTruthy();
+    expect(within(inspector).getByText("IfcFurnitureType")).toBeTruthy();
     expect(within(inspector).getByText("5420 Fire Alarm Systems")).toBeTruthy();
+    expect(within(inspector).queryByRole("button", { name: "Update geometry" })).toBeNull();
+    expect(within(inspector).getByRole("button", { name: "Edit definition" })).toBeTruthy();
     expect(inspector.querySelectorAll(".definition-specs dt")).toHaveLength(2);
     expect(within(inspector).queryByText("FDVU Documentation")).toBeNull();
     expect(inspector.querySelector("h2")?.textContent).toBe("🔥 Cabinet");
     fireEvent.click(screen.getByRole("button", { name: "Preview Cabinet" }));
     const popup = screen.getByRole("dialog", { name: "Definition preview" });
+    expect(within(popup).queryByRole("button", { name: "Update geometry" })).toBeNull();
+    expect(within(popup).getByRole("button", { name: "Edit definition" })).toBeTruthy();
     expect(within(popup).queryByRole("heading", { name: "Definition preview" })).toBeNull();
     expect(popup.querySelector("h2")?.textContent).toBe("🔥 Cabinet");
     expect(within(popup).getByRole("button", { name: "Close dialog" })).toBeTruthy();
@@ -492,7 +471,7 @@ describe("curated catalog", () => {
     render(<CatalogWorkspace catalogApi={f.api} sourceApi={f.sources} />);
     fireEvent.click(await screen.findByRole("button", { name: "Inspect Cabinet" }));
     const inspector = screen.getByRole("complementary", { name: "Definition inspector" });
-    expect(within(inspector).getByText("IFCFURNITURETYPE")).toBeTruthy();
+    expect(within(inspector).getByText("IfcFurnitureType")).toBeTruthy();
     expect(within(inspector).queryByText("1.2 m")).toBeNull();
     expect(screen.queryByLabelText("Source definition")).toBeNull();
     expect(screen.queryByText(/2 definitions/)).toBeNull();
@@ -544,7 +523,7 @@ describe("curated catalog", () => {
         .getByRole("button", { name: "Inspect Cabinet" })
         .getAttribute("aria-pressed"),
     ).toBe("true");
-    expect(within(dialog).getByText("IFCFURNITURETYPE")).toBeTruthy();
+    expect(within(dialog).getByText("IfcFurnitureType")).toBeTruthy();
     expect(
       await within(dialog).findByText(/No current geometry source/),
     ).toBeTruthy();
@@ -569,7 +548,7 @@ it("preserves existing aliases, upload defaults and specification mappings when 
   fireEvent.click(await screen.findByRole("button", { name: "Categories" }));
   fireEvent.click(screen.getByRole("button", { name: "Open Cabinets category" }));
   fireEvent.change(screen.getByLabelText("Category name"), { target: { value: "Cabinet equipment" } });
-  chooseClassification("IFC Class", "IFCFURNITURE");
+  chooseClassification("IFC Class", "IfcFurniture");
   fireEvent.click(screen.getByRole("button", { name: "Save category" }));
   await screen.findByText("Category saved.");
   expect(f.getState().categories[0]).toMatchObject({ name: "Cabinet equipment", aliases: ["Casework", "Cabinets"], uploadMappings: defaults, ifcClass: "IFCFURNITURE" });
@@ -579,24 +558,23 @@ it("preserves unconfirmed product hints without exposing a definition kind contr
   const f = fixture();
   const entry = required(f.getState().entries[0]);
   await f.api.execute({ kind: "edit", expectedRevision: f.getState().revision,
-    entryId: entry.id, definition: { ...entry.definition, kind: "product" } });
+    entryId: entry.id, definition: { ...entry.definition, kind: "product",
+      manufacturer: { value: "Example", confirmed: false }, model: { value: "600", confirmed: false } } });
   render(<CatalogWorkspace catalogApi={f.api} sourceApi={f.sources} />);
   fireEvent.click(
     await screen.findByRole("button", { name: "Inspect Cabinet" }),
   );
   fireEvent.click(screen.getByRole("button", { name: "Edit definition" }));
   expect(screen.queryByLabelText("Kind")).toBeNull();
-  fireEvent.change(screen.getByLabelText("Manufacturer"), {
-    target: { value: "Example" },
-  });
-  fireEvent.change(screen.getByLabelText("Model"), {
-    target: { value: "600" },
-  });
+  expect(screen.queryByLabelText("Manufacturer")).toBeNull();
+  expect(screen.queryByLabelText("Model")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Save definition" }));
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   expect(f.getState().entries[0]?.definition.manufacturer.confirmed).toBe(
     false,
   );
+  expect(f.getState().entries[0]?.definition.manufacturer.value).toBe("Example");
+  expect(f.getState().entries[0]?.definition.model).toEqual({ value: "600", confirmed: false });
   expect(screen.getByRole("button", { name: "Inspect Cabinet" })).toBeTruthy();
 });
 it("refreshes a stale catalog conflict while preserving unsaved editor values", async () => {
@@ -615,12 +593,12 @@ it("refreshes a stale catalog conflict while preserving unsaved editor values", 
     await screen.findByRole("button", { name: "Inspect Cabinet" }),
   );
   fireEvent.click(screen.getByRole("button", { name: "Edit definition" }));
-  fireEvent.change(screen.getByLabelText("Name"), {
+  fireEvent.change(screen.getByLabelText("Asset name"), {
     target: { value: "Unsaved custom name" },
   });
   fireEvent.click(screen.getByRole("button", { name: "Save definition" }));
   await waitFor(() => expect(f.api.read).toHaveBeenCalledTimes(2));
-  expect(screen.getByLabelText("Name")).toHaveProperty(
+  expect(screen.getByLabelText("Asset name")).toHaveProperty(
     "value",
     "Unsaved custom name",
   );
@@ -737,7 +715,7 @@ it("blocks changed source identity before geometry and keeps curated parameters"
   );
   await screen.findByText(/No current geometry source/);
   expect(worker.openModel).not.toHaveBeenCalled();
-  expect(screen.getAllByText("IFCFURNITURETYPE").length).toBeGreaterThan(0);
+  expect(screen.getAllByText("IfcFurnitureType").length).toBeGreaterThan(0);
 });
 
 
@@ -940,7 +918,7 @@ it("keeps the approved definition usable and source details hidden when the lazy
       screen.getByRole("button", { name: "Edit definition" }),
     ).toBeTruthy();
     expect(screen.queryByText("REAL-42")).toBeNull();
-    expect(screen.getAllByText("IFCFURNITURETYPE").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("IfcFurnitureType").length).toBeGreaterThan(0);
     fireEvent.click(
       screen.getByRole("button", { name: "Retry viewer download" }),
     );
@@ -974,21 +952,21 @@ it("rejects a changed type returned during source opening before reading geometr
   hook.unmount();
 });
 
-it("preserves numeric units through a blank edit and records zero as a number", async () => {
+it("preserves hidden numeric specifications and units when renaming an asset", async () => {
   const f = fixture(true);
   render(<CatalogWorkspace catalogApi={f.api} sourceApi={f.sources} />);
   fireEvent.click(
     await screen.findByRole("button", { name: "Inspect Cabinet" }),
   );
   fireEvent.click(screen.getByRole("button", { name: "Edit definition" }));
-  const input = screen.getByRole("spinbutton");
-  fireEvent.change(input, { target: { value: "" } });
-  fireEvent.change(input, { target: { value: "0" } });
+  expect(screen.queryByRole("spinbutton")).toBeNull();
+  const input = screen.getByLabelText("Asset name");
+  fireEvent.change(input, { target: { value: "Renamed cabinet" } });
   fireEvent.click(screen.getByRole("button", { name: "Save definition" }));
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   expect(f.getState().entries[0]?.definition.specifications.width).toEqual({
     kind: "number",
-    value: 0,
+    value: 0.6,
     unit: "m",
   });
 });
@@ -1005,12 +983,13 @@ it("locks the submitted edit while a delayed successful save is pending", async 
     await screen.findByRole("button", { name: "Inspect Cabinet" }),
   );
   fireEvent.click(screen.getByRole("button", { name: "Edit definition" }));
-  fireEvent.change(screen.getByLabelText("Name"), {
+  fireEvent.change(screen.getByLabelText("Asset name"), {
     target: { value: "Submitted name" },
   });
   fireEvent.click(screen.getByRole("button", { name: "Save definition" }));
-  expect(screen.getByLabelText("Name").matches(":disabled")).toBe(true);
-  expect(screen.getByLabelText("Category").matches(":disabled")).toBe(true);
+  expect(screen.getByLabelText("Asset name").matches(":disabled")).toBe(true);
+  expect(screen.getByLabelText("IFC Class").matches(":disabled")).toBe(true);
+  expect(screen.getByLabelText("System").matches(":disabled")).toBe(true);
   const entry = required(f.getState().entries[0]);
   const result = await f.api.execute({
     kind: "edit",
@@ -1053,7 +1032,7 @@ it("keeps existing drafts editable in Library without archive controls", async (
   expect(screen.queryByRole("button", { name: "Archive asset" })).toBeNull();
   expect(screen.queryByRole("button", { name: "Restore asset" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Edit definition" }));
-  fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Generic cabinet" } });
+  fireEvent.change(screen.getByLabelText("Asset name"), { target: { value: "Generic cabinet" } });
   fireEvent.click(screen.getByRole("button", { name: "Save definition" }));
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   expect(screen.getByRole("button", { name: "Inspect Generic cabinet" })).toBeTruthy();
@@ -1062,7 +1041,7 @@ it("keeps existing drafts editable in Library without archive controls", async (
   expect(within(preview).queryByRole("button", { name: "Archive asset" })).toBeNull();
   expect(within(preview).queryByRole("button", { name: "Restore asset" })).toBeNull();
 });
-it("limits Library parameters while retaining category mappings in the editor", async () => {
+it("keeps category mappings stored while hiding extra fields in the Library editor", async () => {
   const f = fixture(true);
   await f.api.execute({
     kind: "import",
@@ -1123,11 +1102,11 @@ it("limits Library parameters while retaining category mappings in the editor", 
   fireEvent.click(
     within(inspector).getByRole("button", { name: "Edit definition" }),
   );
-  expect(
-    within(screen.getByRole("dialog")).getByRole("button", {
-      name: "Use source value Clear opening: 0.6 m",
-    }),
-  ).toBeTruthy();
+  expect(within(screen.getByRole("dialog")).queryByRole("button", {
+    name: "Use source value Clear opening: 0.6 m",
+  })).toBeNull();
+  expect(f.getState().templates.find(template => template.categoryId === door.definition.categoryId)?.mappings[0]?.label)
+    .toBe("Clear opening");
 });
 it("replaces cached availability with unknown on failed inventory refresh and retries", async () => {
   const f = fixture(true);

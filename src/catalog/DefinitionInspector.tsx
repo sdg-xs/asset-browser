@@ -23,7 +23,6 @@ export function DefinitionInspector({
   error,
   onClose,
   onEdit,
-  onGeometry,
   modal = false,
 }: {
   state: CatalogLibrary;
@@ -36,7 +35,6 @@ export function DefinitionInspector({
   error: string;
   onClose(): void;
   onEdit(): void;
-  onGeometry(): void;
   modal?: boolean;
 }) {
   const preview = useDefinitionPreview(state, entry, sourceApi, createWorker, meshApi);
@@ -81,7 +79,6 @@ export function DefinitionInspector({
           <h2>{isFireRelatedAsset(state, entry) && <><span role="img" aria-label="Fire-related asset">🔥</span>{" "}</>}{entry.definition.name}</h2>
           <div className="action-row definition-title-actions">
             <button onClick={onEdit} disabled={pending}>Edit definition</button>
-            <button onClick={onGeometry} disabled={pending}>Update geometry</button>
           </div>
         </div>
         <p>{entry.definition.description}</p>

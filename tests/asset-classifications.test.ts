@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createIfcClassReader } from "../server/ifc-classifications.js";
 import { nsTfmSystemOptions } from "../shared/ns-tfm-system-options.js";
-import { ifcClassSnapshot } from "../shared/ifc-class-snapshot.js";
+import { ifcClassLabel, ifcClassSnapshot } from "../shared/ifc-class-snapshot.js";
 
 describe("asset classifications", () => {
   it("pages through bSDD, omits predefined-type variants, and shares cached results", async () => {
@@ -13,8 +13,8 @@ describe("asset classifications", () => {
     const read = createIfcClassReader(fetcher);
     const [first, second] = await Promise.all([read(), read()]);
     expect(first).toEqual([
-      { value: "IFCALARM", label: "IFCALARM", description: "Alarm" },
-      { value: "IFCWALL", label: "IFCWALL", description: "Wall" },
+      { value: "IFCALARM", label: "IfcAlarm", description: "Alarm" },
+      { value: "IFCWALL", label: "IfcWall", description: "Wall" },
     ]);
     expect(second).toBe(first);
     expect(await read()).toBe(first);
@@ -32,9 +32,21 @@ describe("asset classifications", () => {
   });
   it("keeps real IFC entities in the saved list and applies Statsbygg system exclusions", () => {
     expect(ifcClassSnapshot.some(option => option.value === "IFCALARM")).toBe(true);
+    expect(ifcClassSnapshot.find(option => option.value === "IFCALARM")?.label).toBe("IfcAlarm");
+    expect(ifcClassSnapshot.find(option => option.value === "IFCAIRTOAIRHEATRECOVERY")?.label).toBe("IfcAirToAirHeatRecovery");
+    expect(ifcClassLabel("IFCFURNITURETYPE")).toBe("IfcFurnitureType");
+    expect(ifcClassLabel("IFCDOORSTYLE")).toBe("IfcDoorStyle");
+    expect(ifcClassLabel("Custom class")).toBe("Custom class");
     expect(ifcClassSnapshot.some(option => option.value === "IFCALARMBELL")).toBe(false);
     expect(nsTfmSystemOptions.find(option => option.value.startsWith("5420 "))?.value).toBe("5420 Brannalarmsystemer");
+    expect(nsTfmSystemOptions.find(option => option.value.startsWith("5420 "))).toMatchObject({
+      label: "5420 Fire alarm systems", description: "Brannalarmsystemer",
+    });
     expect(nsTfmSystemOptions.find(option => option.value.startsWith("3600 "))?.value).toBe("3600 Luftbehandlingssystemer");
+    expect(nsTfmSystemOptions.find(option => option.value.startsWith("3600 "))).toMatchObject({
+      label: "3600 Air handling systems", description: "Luftbehandlingssystemer",
+    });
+    expect(nsTfmSystemOptions.every(option => option.description && option.label !== option.value)).toBe(true);
     expect(nsTfmSystemOptions.every(option => /^[2-7]\d{3} \S/.test(option.value))).toBe(true);
     expect(nsTfmSystemOptions.some(option => /^(2300|3100|3300|4600|360[1-7]|5205|7500) /.test(option.value))).toBe(false);
     expect(new Set(nsTfmSystemOptions.map(option => option.value.slice(0, 4))).size).toBe(nsTfmSystemOptions.length);

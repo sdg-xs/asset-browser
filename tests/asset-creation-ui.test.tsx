@@ -61,7 +61,7 @@ describe("guided asset creation", () => {
     expect(screen.getByRole("option", { name: "Fire equipment" })).toBeTruthy();
     fireEvent.keyDown(category, { key: "Enter" });
     expect(category).toHaveProperty("value", "Fire equipment");
-    expect(screen.getByLabelText("IFC Class")).toHaveProperty("value", "IFCALARM");
+    expect(screen.getByLabelText("IFC Class")).toHaveProperty("value", "IfcAlarm");
     expect(screen.getByLabelText("System")).toHaveProperty("value", "5420 Brannalarmsystemer");
     expect(screen.getByLabelText("Asset name")).toHaveProperty("value", "Smoke detector");
     fireEvent.focus(category);
@@ -97,7 +97,7 @@ describe("guided asset creation", () => {
     expect(submit).not.toHaveBeenCalled();
     chooseCategory("Fire equipment");
     expect(name).toHaveProperty("value", "Smoke detector");
-    expect(screen.getByLabelText("IFC Class")).toHaveProperty("value", "IFCALARM");
+    expect(screen.getByLabelText("IFC Class")).toHaveProperty("value", "IfcAlarm");
     expect(screen.getByLabelText("System")).toHaveProperty("value", "5420 Brannalarmsystemer");
     fireEvent.click(screen.getByRole("button", { name: "Save asset" }));
     expect(submit).toHaveBeenCalledWith(expect.objectContaining({ categoryId: "fire", name: "Smoke detector", ifcClass: "IFCALARM", system: "5420 Brannalarmsystemer" }));
@@ -112,7 +112,7 @@ describe("guided asset creation", () => {
     render(<UploadAssetDetails name="Alarm" source={hasSource ? f.snapshot.types[0] ?? null : null} occurrenceId={1}
       categories={state.categories} pending={false} onSubmit={submit} />);
     chooseCategory("Fire equipment");
-    expect(screen.getByLabelText("IFC Class")).toHaveProperty("value", "IFCALARM");
+    expect(screen.getByLabelText("IFC Class")).toHaveProperty("value", "IfcAlarm");
     expect(screen.getByLabelText("System")).toHaveProperty("value", "5420 Fire Alarm Systems");
     fireEvent.click(screen.getByRole("button", { name: "Save asset" }));
     expect(submit).toHaveBeenCalledWith(expect.objectContaining({ categoryId: "fire", ifcClass: "IFCALARM", system: "5420 Fire Alarm Systems" }));
@@ -159,13 +159,13 @@ describe("guided asset creation", () => {
     await screen.findByLabelText("Asset category");
     chooseCategory("Sensors");
     expect(screen.getByLabelText("Asset name")).toHaveProperty("value", "Asset 1");
-    expect(screen.getByLabelText("IFC Class")).toHaveProperty("value", "IFCALARM");
+    expect(screen.getByLabelText("IFC Class")).toHaveProperty("value", "IfcAlarm");
     expect(screen.getByLabelText("System")).toHaveProperty("value", "5420 Brannalarmsystemer");
     expect(screen.queryByText("Source property")).toBeNull();
     expect(screen.queryByRole("combobox", { name: /Map .* from IFC/ })).toBeNull();
     chooseCategory("Other");
     expect(screen.getByLabelText("Asset name")).toHaveProperty("value", "Asset 1");
-    expect(screen.getByLabelText("IFC Class")).toHaveProperty("value", "IFCFURNITURE");
+    expect(screen.getByLabelText("IFC Class")).toHaveProperty("value", "IfcFurniture");
     expect(screen.getByLabelText("System")).toHaveProperty("value", "");
     fireEvent.click(screen.getByRole("button", { name: "Save asset" }));
     await waitFor(() => expect(execute).toHaveBeenCalledWith(expect.objectContaining({ details: {
@@ -378,20 +378,19 @@ describe("guided asset creation", () => {
     expect(screen.getByRole("button", { name: "Inspect Asset 1" })).toBeTruthy();
   });
 
-  it("keeps generic asset editing minimal and routes missing classification to Categories", async () => {
+  it("keeps generic asset editing limited to name and classifications", async () => {
     const f = fixture(); let state = applyLibraryCommand(emptyCatalogLibrary(), { kind: "import-selected", expectedRevision: 0, snapshot: f.snapshot, candidateKeys: ["type:item1"] });
     render(<CatalogWorkspace loadViewer={previewViewer} catalogApi={{ read: async () => state, execute: async command => { state = applyLibraryCommand(state, command); return state; } }} sourceApi={f.api} />);
     fireEvent.click(await screen.findByRole("button", { name: "Inspect Asset 2" }));
     fireEvent.click(screen.getByRole("button", { name: "Edit definition" }));
     const dialog = screen.getByRole("dialog", { name: "Edit definition" });
     expect(within(dialog).queryByRole("textbox", { name: "Manufacturer" })).toBeNull();
-    expect(within(dialog).getByText("Additional definition details").closest("details")).toHaveProperty("open", false);
-    expect(within(dialog).getByText("Source details").closest("details")).toHaveProperty("open", false);
-    fireEvent.click(within(dialog).getByRole("button", { name: "Go to Categories" }));
-    expect(screen.queryByRole("dialog")).toBeNull();
-    expect(screen.getByRole("button", { name: "Categories" }).getAttribute("aria-expanded")).toBe("true");
-    expect(screen.getByRole("button", { name: "Categories" }).getAttribute("aria-current")).toBe("page");
-    expect(screen.queryByRole("button", { name: "Inspect Asset 2" })).toBeNull();
+    expect(within(dialog).queryByText("Additional definition details")).toBeNull();
+    expect(within(dialog).queryByText("Source details")).toBeNull();
+    expect(within(dialog).queryByRole("button", { name: "Go to Categories" })).toBeNull();
+    expect(within(dialog).getByRole("textbox", { name: "Asset name" })).toBeTruthy();
+    expect(within(dialog).getByRole("combobox", { name: "IFC Class" })).toBeTruthy();
+    expect(within(dialog).getByRole("combobox", { name: "System" })).toBeTruthy();
   });
   it.each(["upload", "analysis", "import"])("ignores late %s completion after closing", async stage => {
     const f = fixture(1); let resolve: (() => void) | undefined;

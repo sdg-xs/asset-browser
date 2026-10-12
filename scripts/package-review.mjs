@@ -26,6 +26,7 @@ for (const file of ["index.html", "package-lock.json", "tsconfig.json", "tsconfi
 await mkdir(join(bundle, "scripts"));
 await copyFile(join(root, "scripts/copy-wasm.mjs"), join(bundle, "scripts/copy-wasm.mjs"));
 await copyFile(join(root, "scripts/review-model-path.mjs"), join(bundle, "scripts/review-model-path.mjs"));
+await copyFile(join(root, "scripts/review-model-path.d.mts"), join(bundle, "scripts/review-model-path.d.mts"));
 await copyFile(join(root, "scripts/review-bundle/run-review.mjs"), join(bundle, "scripts/run-review.mjs"));
 for (const file of ["README.md", "AGENTS.md"])
   await copyFile(join(root, "scripts/review-bundle", file), join(bundle, file));

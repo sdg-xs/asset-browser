@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ifcClassLabel } from "../../shared/ifc-class-snapshot.js";
 import { assetUploadDetailsSchema, type AssetUploadDetails, type CatalogCategory, type SourceTypeObservation } from "../../shared/catalog-library.js";
 import { SearchableSelect } from "../components/SearchableSelect.js";
 
@@ -41,7 +42,7 @@ export function UploadAssetDetails({ name, source, categories = [], pending, onS
     <fieldset disabled={pending} className="authoring-fields">
       <label>Asset name<input required aria-label="Asset name" value={details.name}
         onChange={event => setDetails(previous => ({ ...previous, name: event.target.value }))} /></label>
-      <label>IFC Class<input aria-label="IFC Class" value={details.ifcClass} readOnly placeholder="Assigned by category" /></label>
+      <label>IFC Class<input aria-label="IFC Class" value={ifcClassLabel(details.ifcClass)} readOnly placeholder="Assigned by category" /></label>
       <label>System<input aria-label="System" value={details.system} readOnly placeholder="Assigned by category" /></label>
       {!validation.success && <p role="alert">{validation.error.issues[0]?.message}</p>}
       {categoryRequired && <p>Choose a category before saving.</p>}

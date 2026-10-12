@@ -99,7 +99,7 @@ export function useDefinitionPreview(
           return;
         }
         const model = models.find(model => model.id === reference.modelId && model.fingerprint === reference.fingerprint);
-        if (!model) throw Error("The uploaded geometry file is unavailable. Upload a new IFC file using Update geometry.");
+        if (!model) throw Error("The uploaded geometry file is unavailable. Make the original IFC file available to preview this asset.");
         await worker.openModel({ model, fileUrl: `/api/models/${model.id}/file`, purpose: "creation" });
         if (!active) return;
         const index = await worker.discoverAssets({ modelId: model.id });
@@ -107,7 +107,7 @@ export function useDefinitionPreview(
         const asset = index.fingerprint === reference.fingerprint
           ? previewCandidate(index.candidates.find(candidate => candidate.key === reference.candidateKey), model.id)
           : undefined;
-        if (!asset?.occurrenceIds.includes(reference.occurrenceId)) throw Error("The uploaded geometry changed. Upload a new IFC file using Update geometry.");
+        if (!asset?.occurrenceIds.includes(reference.occurrenceId)) throw Error("The uploaded geometry changed. The saved asset preview no longer matches the IFC source.");
         setInspection({ kind: "loading", asset });
         const geometry = await worker.readGeometry({ modelId: model.id, elementId: reference.occurrenceId });
         if (!active) return;

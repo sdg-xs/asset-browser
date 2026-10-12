@@ -10,6 +10,7 @@ import {
   parameterSourceKeys,
 } from "../../shared/catalog-observations.js";
 import { visiblePropertySet } from "../property-display.js";
+import { ifcClassLabel } from "../../shared/ifc-class-snapshot.js";
 const numberFormat = new Intl.NumberFormat("en", {
   maximumSignificantDigits: 7,
   useGrouping: false,
@@ -69,7 +70,7 @@ export function entrySpecifications(
   ));
 }
 
-export function libraryParameters(state: CatalogLibrary, entry: LibraryEntry) {
+export function entryClassifications(state: CatalogLibrary, entry: LibraryEntry) {
   const source = state.sources.find(s => s.id === entry.sourceReferences[0]?.sourceId);
   const specifications = entrySpecifications(state, entry);
   const systemSpecification = specifications.System ?? Object.entries(specifications)
@@ -80,11 +81,21 @@ export function libraryParameters(state: CatalogLibrary, entry: LibraryEntry) {
     visiblePropertySet(field.pset) && field.name.trim().toLowerCase() === "system",
   );
   const system = systemSpecification
-    ? valueText(systemSpecification)
+    ? systemSpecification.kind === "missing" ? "" : valueText(systemSpecification)
     : systemField?.values.find(value => value.normalized.kind !== "missing")?.normalized;
+  return {
+    ifcClass: classSpecification
+      ? classSpecification.kind === "missing" ? "" : valueText(classSpecification)
+      : source?.observation.ifcClass ?? "",
+    system: typeof system === "string" ? system : system ? valueText(system) : "",
+  };
+}
+
+export function libraryParameters(state: CatalogLibrary, entry: LibraryEntry) {
+  const { ifcClass, system } = entryClassifications(state, entry);
   return [
-    { label: "IFC Class", value: classSpecification ? valueText(classSpecification) : source?.observation.ifcClass || "Unknown" },
-    { label: "System", value: typeof system === "string" ? system : system ? valueText(system) : "Unknown" },
+    { label: "IFC Class", value: ifcClassLabel(ifcClass) || "Unknown" },
+    { label: "System", value: system || "Unknown" },
   ];
 }
 
