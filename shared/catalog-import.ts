@@ -3,16 +3,20 @@ import type {
   LibrarySnapshot,
   SourceTypeObservation,
   FieldMapping,
+  LibraryEntry,
 } from "./catalog-library.js";
 import { reusableField, parameterSourceKeys } from "./catalog-observations.js";
 import { sourceObservationKey } from "./catalog-source-identity.js";
+import { identifiedTypeKey } from "./catalog-type-groups.js";
 
 export function importSnapshot(
   state: CatalogLibrary,
   snapshot: LibrarySnapshot,
   candidateKeys?: string[],
+  assignedCategoryId?: string,
 ): boolean {
   let changed = false;
+  const createdTypes = new Map<string, LibraryEntry>();
   const observedIds = new Set(snapshot.types.map(sourceObservationKey));
   for (const source of state.sources.filter(
     (source) => source.modelId === snapshot.modelId,
@@ -68,8 +72,16 @@ export function importSnapshot(
       )
     ) {
       changed = true;
-      const categoryId = seedCategories(state, observation);
-      state.entries.push({
+      const categoryId = assignedCategoryId ?? seedCategories(state, observation);
+      const typeKey = candidateKeys ? identifiedTypeKey(observation) : sourceObservationKey(observation);
+      const duplicate = createdTypes.get(typeKey);
+      if (duplicate) {
+        if (duplicate.definition.categoryId !== categoryId) duplicate.definition.categoryId = null;
+        duplicate.sourceReferences.push({ sourceId: source.id, fingerprint: source.fingerprint,
+          occurrenceIds: [...observation.occurrenceIds], equivalent: false });
+        continue;
+      }
+      const entry: LibraryEntry = {
         id: crypto.randomUUID(),
         status: "draft",
         reviewFlags: [],
@@ -92,9 +104,11 @@ export function importSnapshot(
             equivalent: false,
           },
         ],
-      });
+      };
+      state.entries.push(entry);
+      createdTypes.set(typeKey, entry);
     }
-    seedCategories(state, observation);
+    if (assignedCategoryId === undefined) seedCategories(state, observation);
   }
   return changed;
 }

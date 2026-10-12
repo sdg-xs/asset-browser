@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { ZodError } from "zod";
 import {
@@ -20,6 +20,8 @@ import { LibraryError, LibraryStore } from "./library-store.js";
 import { migrateCatalog } from "../shared/catalog-publication.js";
 import { changedReferences } from "../shared/catalog-references.js";
 import { sourceObservationKey } from "../shared/catalog-source-identity.js";
+import { GeometryStore } from "./geometry-store.js";
+import { replaceFile } from "./replace-file.js";
 
 function missingFile(error: unknown): boolean {
   return error instanceof Error && "code" in error && error.code === "ENOENT";
@@ -182,7 +184,23 @@ export class CatalogLibraryStore {
         if (next !== this.state) await this.commit(next);
         return structuredClone(this.state);
       };
-      if (command.kind === "import" || command.kind === "import-selected") {
+      if (command.kind === "update-geometry" || command.kind === "create-asset") {
+        const reference = command.geometryReference;
+        if ("kind" in reference) {
+          await new GeometryStore(this.dataRoot).read(reference.geometryId);
+          return publish();
+        }
+        return this.requireModels().withCurrentModels(
+          [{ modelId: reference.modelId, fingerprint: reference.fingerprint, indexPurpose: "creation" }],
+          async (models) => {
+            const candidate = models[0]?.creationIndex?.candidates.find(candidate => candidate.key === reference.candidateKey);
+            if (!candidate?.occurrenceIds.includes(reference.occurrenceId))
+              invalidSource("Choose geometry from the uploaded IFC file's current asset index.");
+            return publish();
+          },
+        );
+      }
+      if (command.kind === "import" || command.kind === "import-selected" || command.kind === "import-asset") {
         return this.requireModels().withCurrentModels(
           [
             {
@@ -250,7 +268,7 @@ export class CatalogLibraryStore {
       await writeFile(temporary, JSON.stringify(state, null, 2), {
         flag: "wx",
       });
-      await rename(temporary, join(this.dataRoot, "catalog-library.json"));
+      await replaceFile({ temporary, destination: join(this.dataRoot, "catalog-library.json") });
       this.state = state;
     } finally {
       await unlink(temporary).catch((error) => {

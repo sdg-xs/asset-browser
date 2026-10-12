@@ -7,12 +7,14 @@ export function Dialog({
   onClose,
   busy = false,
   className,
+  hideTitle = false,
 }: {
   title: string;
   children: ReactNode;
   onClose(): void;
   busy?: boolean;
   className?: string;
+  hideTitle?: boolean;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
@@ -33,8 +35,8 @@ export function Dialog({
         if (!busy) onClose();
       }}
     >
-      <div className="dialog-heading">
-        <h2>{title}</h2>
+      <div className={`dialog-heading${hideTitle ? " dialog-heading-close-only" : ""}`}>
+        {!hideTitle && <h2>{title}</h2>}
         <button
           className="icon-button"
           aria-label="Close dialog"

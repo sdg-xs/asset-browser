@@ -11,7 +11,7 @@ import type { Progress } from "./reader.js";
 
 export type PropertyObservation = Pick<
   ObservedField,
-  "key" | "pset" | "name" | "measure" | "unit"
+  "key" | "pset" | "name" | "measure" | "unit" | "origin"
 > & { rawValue: string; normalized: NormalizedValue };
 export function analyzeLibrary({
   index,
@@ -52,6 +52,7 @@ export function analyzeLibrary({
             name: observation.name,
             measure: observation.measure,
             unit: observation.unit,
+            ...(observation.origin ? { origin: observation.origin } : {}),
             values: [],
           };
           fields.set(field.key, field);

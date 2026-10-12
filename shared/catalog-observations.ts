@@ -36,9 +36,10 @@ const installationFieldNames = new Set(
 );
 
 export function reusableField(
-  field: Pick<ObservedField, "name">,
+  field: Pick<ObservedField, "name" | "origin">,
   excludedNames: string[] = [],
 ): boolean {
+  if (field.origin === "attribute") return false;
   if (excludedNames.some((name) => name.trim().toLowerCase() === field.name.trim().toLowerCase()))
     return false;
   const installationMetadata = installationFieldNames.has(

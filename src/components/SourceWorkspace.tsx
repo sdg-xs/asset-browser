@@ -17,6 +17,8 @@ import { AssetGrid } from "./AssetGrid.js";
 import { AssetInspector } from "./AssetInspector.js";
 import { UploadDialog } from "./UploadDialog.js";
 import { Dialog } from "./Dialog.js";
+import { Brand } from "./Brand.js";
+import { groupAssetTypes } from "../library/type-groups.js";
 
 export function SourceWorkspace({
   dependencies,
@@ -49,7 +51,7 @@ export function SourceWorkspace({
   const [removeError, setRemoveError] = useState("");
   const index = library.model?.index;
   const query = search.toLocaleLowerCase().trim();
-  const filtered = (index?.types ?? []).filter(
+  const filtered = groupAssetTypes(index?.types ?? []).filter(
     (type) =>
       (!category || type.categories.includes(category)) &&
       (!query ||
@@ -99,7 +101,7 @@ export function SourceWorkspace({
       )}
       <header className="workspace-header">
         <div>
-          <span className="brand-name">HEMY</span>
+          <Brand />
           <span className="header-divider" />
           {embedded ? <h2>IFC sources</h2> : <h1>Asset library</h1>}
           <span className="workspace-tag">LOCAL WORKSPACE</span>

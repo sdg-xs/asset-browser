@@ -9,6 +9,9 @@ import multer from "multer";
 import { z, ZodError } from "zod";
 import { CatalogIndexSchema } from "../shared/contracts.js";
 import { CreationIndexSchema } from "../shared/asset-creation.js";
+import { geometryUploadSchema } from "../shared/mesh-geometry.js";
+import { createIfcClassReader } from "./ifc-classifications.js";
+import { GeometryStore } from "./geometry-store.js";
 import { DEFAULT_MAX_UPLOAD_BYTES } from "./config.js";
 import { mountCatalogLibraryRoutes } from "./catalog-library-routes.js";
 import {
@@ -72,7 +75,13 @@ export async function createApp(
   app.disable("x-powered-by");
   app.use(localRequests);
   app.post("/api/catalog-library/commands", express.json({ limit: "64mb" }));
+  app.post("/api/geometry", express.json({ limit: "64mb" }));
   app.use("/api", express.json({ limit: "32mb" }));
+  const readIfcClasses = createIfcClassReader();
+  app.get("/api/classifications/ifc-classes", async (_request, response) => {
+    try { response.json(await readIfcClasses()); }
+    catch { throw new LibraryError("CLASSIFICATION_UNAVAILABLE", "Could not load IFC classes from buildingSMART bSDD.", 502); }
+  });
   const upload = multer({
     storage: multer.diskStorage({
       destination: join(resolve(options.dataRoot), "staging"),
@@ -134,6 +143,16 @@ export async function createApp(
   app.put("/api/models/:id/creation-index", async (request, response) => {
     const raw: unknown = request.body;
     response.json(await store.saveCreationIndex(request.params.id, CreationIndexSchema.parse(raw)));
+  });
+  const geometryStore = new GeometryStore(resolve(options.dataRoot));
+  app.post("/api/geometry", async (request, response) => {
+    const raw: unknown = request.body;
+    const saved = await geometryStore.save(geometryUploadSchema.parse(raw));
+    response.status(201).json(saved);
+  });
+  app.get("/api/geometry/:id", async (request, response) => {
+    response.setHeader("Cache-Control", "no-store");
+    response.json(await geometryStore.read(request.params.id));
   });
   await mountCatalogLibraryRoutes(app, store, options.dataRoot);
   app.use("/api", (_request, _response, next) => {

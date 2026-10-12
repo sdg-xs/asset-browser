@@ -7,6 +7,8 @@ import type {
 import type { LibraryModel, PreviewAsset } from "../../shared/contracts.js";
 import type { CreationCandidate } from "../../shared/asset-creation.js";
 import { sourceObservationKey } from "../../shared/catalog-source-identity.js";
+import { decodeGeometry } from "../../shared/mesh-geometry.js";
+import { geometryApi as defaultGeometryApi, type GeometryApi } from "./geometry-api.js";
 import type { LibraryApi } from "../library/api.js";
 import type { Inspection, LibraryWorker } from "../library/useLibrary.js";
 export function geometrySource(
@@ -44,7 +46,7 @@ export function geometrySource(
     return null;
   return { source, model, asset };
 }
-function previewCandidate(candidate: CreationCandidate | undefined, modelId: string): PreviewAsset | undefined {
+export function previewCandidate(candidate: CreationCandidate | undefined, modelId: string): PreviewAsset | undefined {
   if (!candidate) return undefined;
   const common = {
     id: candidate.key,
@@ -71,6 +73,7 @@ export function useDefinitionPreview(
   entry: LibraryEntry,
   api: LibraryApi,
   createWorker: () => LibraryWorker,
+  meshApi: GeometryApi = defaultGeometryApi,
 ) {
   const [inspection, setInspection] = useState<Inspection>({ kind: "closed" }),
     [message, setMessage] = useState(""),
@@ -83,6 +86,37 @@ export function useDefinitionPreview(
     const run = async () => {
       const models = await api.list();
       if (!active) return;
+      if (entry.geometryReference) {
+        const reference = entry.geometryReference;
+        if ("kind" in reference) {
+          const record = await meshApi.read(reference.geometryId);
+          if (!active) return;
+          const asset: PreviewAsset = { id: record.id, modelId: record.id, typeGlobalId: null, elementGlobalId: record.id,
+            name: entry.definition.name, ifcClass: record.format.toUpperCase(), categories: [], occurrenceIds: [1], representativeId: 1 };
+          setInspection({ kind: "ready", asset, geometry: decodeGeometry(record.geometry), properties: [], elementId: 1, notice: "" });
+          setMessage("");
+          worker.dispose();
+          return;
+        }
+        const model = models.find(model => model.id === reference.modelId && model.fingerprint === reference.fingerprint);
+        if (!model) throw Error("The uploaded geometry file is unavailable. Upload a new IFC file using Update geometry.");
+        await worker.openModel({ model, fileUrl: `/api/models/${model.id}/file`, purpose: "creation" });
+        if (!active) return;
+        const index = await worker.discoverAssets({ modelId: model.id });
+        if (!active) return;
+        const asset = index.fingerprint === reference.fingerprint
+          ? previewCandidate(index.candidates.find(candidate => candidate.key === reference.candidateKey), model.id)
+          : undefined;
+        if (!asset?.occurrenceIds.includes(reference.occurrenceId)) throw Error("The uploaded geometry changed. Upload a new IFC file using Update geometry.");
+        setInspection({ kind: "loading", asset });
+        const geometry = await worker.readGeometry({ modelId: model.id, elementId: reference.occurrenceId });
+        if (!active) return;
+        if (!geometry.meshes.length) throw Error("The selected IFC asset has no preview geometry.");
+        setInspection({ kind: "ready", asset, geometry, properties: [], elementId: reference.occurrenceId, notice: "" });
+        setMessage("");
+        worker.dispose();
+        return;
+      }
       const references = entry.sourceReferences.filter(
         (r, i) => i === 0 || r.equivalent,
       );
@@ -163,6 +197,7 @@ export function useDefinitionPreview(
       }
     };
     void run().catch((cause) => {
+      worker.dispose();
       if (active) {
         setInspection({ kind: "closed" });
         setMessage(
@@ -174,6 +209,6 @@ export function useDefinitionPreview(
       active = false;
       worker.dispose();
     };
-  }, [state, entry, api, createWorker, attempt]);
+  }, [state, entry, api, createWorker, meshApi, attempt]);
   return { inspection, message, retry: () => setAttempt((a) => a + 1) };
 }

@@ -20,6 +20,66 @@ function select(state = emptyCatalogLibrary(), keys = ["type:typed"], analysis =
   return applyLibraryCommand(state, { kind: "import-selected", expectedRevision: state.revision, snapshot: analysis, candidateKeys: keys });
 }
 describe("selective creation import", () => {
+  it("creates one draft for identical identified types and retains every source reference", () => {
+    const first = snapshot.types[0];
+    if (!first) throw Error("Missing typed observation");
+    const analysis: LibrarySnapshot = { ...snapshot, types: [first, { ...first, typeGlobalId: "duplicate", occurrenceIds: [3] }] };
+    const state = select(emptyCatalogLibrary(), ["type:typed", "type:duplicate"], analysis);
+    expect(state.entries).toHaveLength(1);
+    expect(state.entries[0]?.sourceReferences.map(reference => reference.occurrenceIds)).toEqual([[1, 2], [3]]);
+    expect(state.sources).toHaveLength(2);
+    expect(select(state, ["type:typed", "type:duplicate"], analysis)).toBe(state);
+  });
+  it("groups by type name and retains different technical values in source evidence", () => {
+    const first = snapshot.types[0];
+    if (!first) throw Error("Missing typed observation");
+    const field = { key: "width", name: "Width", pset: "Dimensions", measure: "IFCLENGTHMEASURE", unit: "m" };
+    const analysis: LibrarySnapshot = { ...snapshot, types: [
+      { ...first, fields: [{ ...field, values: [{ rawValue: "1", normalized: { kind: "number", value: 1, unit: "m" }, occurrenceIds: [1, 2] }] }] },
+      { ...first, typeGlobalId: "wide", occurrenceIds: [3], fields: [{ ...field, values: [{ rawValue: "2", normalized: { kind: "number", value: 2, unit: "m" }, occurrenceIds: [3] }] }] },
+    ] };
+    const state = select(emptyCatalogLibrary(), ["type:typed", "type:wide"], analysis);
+    expect(state.entries).toHaveLength(1);
+    expect(state.entries[0]?.sourceReferences).toHaveLength(2);
+    expect(state.sources.map(source => source.observation.fields[0]?.values[0]?.normalized)).toEqual([
+      { kind: "number", value: 1, unit: "m" }, { kind: "number", value: 2, unit: "m" },
+    ]);
+  });
+  it("ignores symbol placement and installation addresses, and allows matching blank properties", () => {
+    const first = snapshot.types[0];
+    if (!first) throw Error("Missing typed observation");
+    const fields = (ids: number[], address: string, elevation: number) => [
+      { key: "fire-address", name: "Fire Address", pset: "Identity Data", measure: "IFCLABEL", unit: null,
+        values: [{ rawValue: address, normalized: { kind: "text" as const, value: address, unit: null }, occurrenceIds: ids }] },
+      { key: "symbol-elevation", name: "Symbol Drop Elevation", pset: "Dimensions", measure: "IFCLENGTHMEASURE", unit: "m",
+        values: [{ rawValue: String(elevation), normalized: { kind: "number" as const, value: elevation, unit: "m" }, occurrenceIds: ids }] },
+      { key: "description", name: "Description", pset: "Identity Data", measure: "IFCLABEL", unit: null,
+        values: [{ rawValue: "", normalized: { kind: "missing" as const }, occurrenceIds: ids }] },
+    ];
+    const analysis: LibrarySnapshot = { ...snapshot, types: [
+      { ...first, fields: fields([1, 2], "A", 1) },
+      { ...first, typeGlobalId: "duplicate", occurrenceIds: [3], fields: fields([3], "B", 2) },
+    ] };
+    expect(select(emptyCatalogLibrary(), ["type:typed", "type:duplicate"], analysis).entries).toHaveLength(1);
+  });
+  it("combines exporter rounding differences without changing recorded values", () => {
+    const first = snapshot.types[0];
+    if (!first) throw Error("Missing typed observation");
+    const observed = (ids: number[], value: number) => [{
+      key: "volume", name: "Volume", pset: "Dimensions", measure: "IFCVOLUMEMEASURE", unit: "m³",
+      values: [{ rawValue: String(value), normalized: { kind: "number" as const, value, unit: "m³" }, occurrenceIds: ids }],
+    }];
+    const analysis: LibrarySnapshot = { ...snapshot, types: [
+      { ...first, fields: observed([1, 2], 0.0007192365988812223) },
+      { ...first, typeGlobalId: "duplicate", occurrenceIds: [3], fields: observed([3], 0.0007192365988812221) },
+    ] };
+    const state = select(emptyCatalogLibrary(), ["type:typed", "type:duplicate"], analysis);
+    expect(state.entries).toHaveLength(1);
+    expect(state.sources.map(source => source.observation.fields[0]?.values[0]?.normalized)).toEqual([
+      { kind: "number", value: 0.0007192365988812223, unit: "m³" },
+      { kind: "number", value: 0.0007192365988812221, unit: "m³" },
+    ]);
+  });
   it("requires explicit selection for complete discovery and flags changed same-revision observations", () => {
     expect(() => applyLibraryCommand(emptyCatalogLibrary(), { kind: "import", expectedRevision: 0, snapshot })).toThrow();
     const first = select();
@@ -105,10 +165,19 @@ describe("creation import source boundary", () => {
     const analysis = { ...snapshot, modelId: model.id, fingerprint: model.fingerprint, sourceName: model.name };
     const index = CreationIndexSchema.parse({ schemaVersion: 1, modelId: model.id, fingerprint: model.fingerprint, candidates: analysis.types.map(type => ({ key: sourceObservationKey(type), identity: type.typeGlobalId === null ? { kind: "element", globalId: type.elementGlobalId } : { kind: "type", globalId: type.typeGlobalId }, name: type.name, ifcClass: type.ifcClass, categories: type.categories, classificationIssues: [], occurrenceIds: type.occurrenceIds, representativeId: type.occurrenceIds[0] })), stats: { elements: 4, candidates: 3, classified: 1, unclassified: 2, untyped: 2 } });
     await request(app).put(`/api/models/${model.id}/creation-index`).send(index).expect(200);
-    const imported = catalogLibrarySchema.parse((await request(app).post("/api/catalog-library/commands").send({ kind: "import-selected", expectedRevision: 0, snapshot: analysis, candidateKeys: ["element:element-a"] }).expect(200)).body);
+    const details = { name: "Reviewed element", ifcClass: "IFCFURNITURE", system: "Furniture", fdvuDocumentationUrl: "https://example.com/fdvu.pdf" };
+    const imported = catalogLibrarySchema.parse((await request(app).post("/api/catalog-library/commands").send({ kind: "import-asset", expectedRevision: 0, snapshot: analysis, candidateKey: "element:element-a", details }).expect(200)).body);
+    expect(imported.entries).toHaveLength(1);
+    expect(imported.entries[0]?.status).toBe("draft");
+    expect(imported.entries[0]?.sourceReferences[0]?.occurrenceIds).toEqual([3]);
+    expect(imported.entries[0]?.definition).toMatchObject({ name: details.name, fdvuDocumentationUrl: details.fdvuDocumentationUrl,
+      specifications: { "IFC Class": { kind: "text", value: details.ifcClass, unit: null }, System: { kind: "text", value: details.system, unit: null } } });
     const bytes = await readFile(join(fixture.dataRoot, "catalog-library.json"));
+    await request(app).post("/api/catalog-library/commands").send({ kind: "import-asset", expectedRevision: imported.revision,
+      snapshot: analysis, candidateKey: ["type:typed", "element:element-b"] }).expect(400);
+    expect(await readFile(join(fixture.dataRoot, "catalog-library.json"))).toEqual(bytes);
     for (const altered of [ { ...analysis, fingerprint: "stale" }, { ...analysis, types: analysis.types.slice(1) }, { ...analysis, types: analysis.types.map(type => ({ ...type, occurrenceIds: [999] })) } ]) {
-      await request(app).post("/api/catalog-library/commands").send({ kind: "import-selected", expectedRevision: imported.revision, snapshot: altered, candidateKeys: ["element:element-a"] }).expect(altered.fingerprint === "stale" ? 409 : 400);
+      await request(app).post("/api/catalog-library/commands").send({ kind: "import-asset", expectedRevision: imported.revision, snapshot: altered, candidateKey: "element:element-a" }).expect(altered.fingerprint === "stale" ? 409 : 400);
       expect(await readFile(join(fixture.dataRoot, "catalog-library.json"))).toEqual(bytes);
     }
     const entry = imported.entries[0];

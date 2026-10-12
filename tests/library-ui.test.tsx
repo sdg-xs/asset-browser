@@ -90,6 +90,32 @@ function setup(models: LibraryModel[] = [model]) {
   return { api, worker, dependencies };
 }
 describe("catalog workspace", () => {
+  it("shows one source asset per type name and combines its occurrences", async () => {
+    const original = index.types[0];
+    if (!original) throw Error("Missing fixture type");
+    const duplicateIndex = { ...index, types: [original, { ...original, id: "duplicate", typeGlobalId: "duplicate-global-id", occurrenceIds: [32], representativeId: 32 }] };
+    const { dependencies, worker } = setup([{ ...model, index: duplicateIndex }]);
+    vi.mocked(worker.openModel).mockResolvedValue(duplicateIndex);
+    render(<App dependencies={dependencies} />);
+    const card = await screen.findByRole("button", { name: "Inspect Sensor type" });
+    expect(screen.getAllByRole("button", { name: "Inspect Sensor type" })).toHaveLength(1);
+    expect(screen.getByText("3 occurrences")).toBeTruthy();
+    fireEvent.click(card);
+    await screen.findByText("Generic Hard Asset");
+    expect(screen.getByText("3 occurrences in source model")).toBeTruthy();
+  });
+  it("hides Pset groups while keeping other IFC properties visible", async () => {
+    const { dependencies, worker } = setup();
+    vi.mocked(worker.readProperties).mockResolvedValue([
+      { name: "Identity Data", source: "instance", values: [{ name: "Generic Hard Asset", value: "Temperature sensor" }] },
+      { name: "Pset_SensorTypeCommon", source: "type", values: [{ name: "Hidden Pset parameter", value: "Hidden value" }] },
+      { name: "pset_Custom", source: "instance", values: [{ name: "Hidden custom parameter", value: "Custom value" }] },
+    ]);
+    render(<App dependencies={dependencies} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Inspect Sensor type" }));
+    await screen.findByText("Generic Hard Asset");
+    expect(screen.queryByText(/Pset_Sensor|pset_Custom|Hidden Pset|Hidden custom|Hidden value|Custom value/)).toBeNull();
+  });
   it("opens a centered preview from the card arrow while ordinary clicks keep the side inspector", async () => {
     const { dependencies, worker } = setup();
     render(<App dependencies={dependencies} />);

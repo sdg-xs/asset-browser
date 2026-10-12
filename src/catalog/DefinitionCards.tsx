@@ -1,37 +1,25 @@
-import { entryIssues } from "../../shared/catalog-rules.js";
 import { ArrowUpRight, Box } from "lucide-react";
 import type {
   CatalogLibrary,
   LibraryEntry,
 } from "../../shared/catalog-library.js";
 import type { SourceAvailability } from "./useSourceAvailability.js";
-import {
-  entrySpecifications,
-  fieldLabel,
-  entryFieldLabel,
-  valueText,
-} from "./display.js";
 import { geometrySource } from "./useDefinitionPreview.js";
+import { isFireRelatedAsset } from "./display.js";
 export function DefinitionCards({
   state,
   entries,
   availability,
   selected,
-  checked,
   mode,
-  review,
   onSelect,
-  onCheck,
 }: {
   state: CatalogLibrary;
   entries: LibraryEntry[];
   availability: SourceAvailability;
   selected: string;
-  checked: string[];
   mode: "grid" | "list";
-  review: boolean;
   onSelect(id: string, modal: boolean): void;
-  onCheck(id: string): void;
 }) {
   return (
     <div className={`definition-cards ${mode}`}>
@@ -40,29 +28,15 @@ export function DefinitionCards({
           className={`definition-card ${selected === entry.id ? "selected" : ""}`}
           key={entry.id}
         >
-          {review && (
-            <label className="card-check">
-              <input
-                type="checkbox"
-                aria-label={`Select ${entry.definition.name}`}
-                checked={checked.includes(entry.id)}
-                onChange={() => onCheck(entry.id)}
-              />
-            </label>
-          )}
           <button
             className="definition-select"
             aria-label={`Inspect ${entry.definition.name}`}
             aria-pressed={selected === entry.id}
             onClick={() => onSelect(entry.id, false)}
           >
+            {isFireRelatedAsset(state, entry) && <span className="definition-fire-symbol" role="img" aria-label="Fire-related asset">🔥</span>}
             <div className="definition-art">
               <Box size={42} strokeWidth={1} />
-              <span>
-                {entry.definition.kind === "product"
-                  ? "PRODUCT"
-                  : "SPECIFICATION"}
-              </span>
             </div>
             <div className="definition-card-copy">
               <span className="eyebrow">
@@ -76,31 +50,21 @@ export function DefinitionCards({
                   entry.definition.manufacturer.value ||
                   "Reusable definition"}
               </p>
-              <div className="card-specs">
-                {Object.entries(entrySpecifications(state, entry))
-                  .slice(0, 3)
-                  .map(([key, value]) => (
-                    <span key={key}>
-                      {entryFieldLabel(state, entry, key)}{" "}
-                      <strong>{valueText(value)}</strong>
-                    </span>
-                  ))}
-              </div>
-              {review && (
-                <span className="badge">
-                  {entry.status === "archived"
-                    ? "Archived"
-                    : `${entryIssues(state, entry).length} review issues`}
-                </span>
-              )}
               <span className="availability">
                 {availability.kind !== "ready"
                   ? "Geometry availability unknown"
-                  : entry.sourceReferences.some(
+                  : (entry.geometryReference
+                    ? "kind" in entry.geometryReference || availability.models.some(model => {
+                        const reference = entry.geometryReference;
+                        return reference && !("kind" in reference) && model.id === reference.modelId &&
+                          model.fingerprint === reference.fingerprint && model.creationIndex?.candidates.some(candidate =>
+                            candidate.key === reference.candidateKey && candidate.occurrenceIds.includes(reference.occurrenceId));
+                      })
+                    : entry.sourceReferences.some(
                         (r, i) =>
                           (i === 0 || r.equivalent) &&
                           geometrySource(state, r, availability.models),
-                      )
+                      ))
                     ? "Geometry available"
                     : "Geometry unavailable"}
                 {entry.reviewFlags.length ? " · Source changed" : ""}

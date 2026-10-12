@@ -10,6 +10,7 @@ import type {
 import { IfcWorkerClient } from "../ifc/client.js";
 import { libraryApi, type LibraryApi } from "./api.js";
 import { SourceRevisionError } from "../../shared/revision.js";
+import { groupAssetTypes } from "./type-groups.js";
 
 export type LibraryWorker = Pick<
   IfcWorkerClient,
@@ -205,7 +206,7 @@ export function useLibrary(dependencies: Dependencies = defaults) {
         try {
           const catalog = await open(model);
           if (!valid() || !client.current) return;
-          const currentAsset = catalog.types.find((type) => type.id === asset.id);
+          const currentAsset = groupAssetTypes(catalog.types).find((type) => type.id === asset.id);
           if (!currentAsset) throw new Error(
             "This type is absent from the current source revision. Choose a current asset type.",
           );

@@ -6,6 +6,12 @@ import {
   IFCRELDEFINESBYTYPE,
   IFCPROPERTYSET,
   IFCPROPERTYSINGLEVALUE,
+  IFCELEMENTQUANTITY,
+  IFCRELASSIGNSTOGROUP,
+  IFCRELASSOCIATESMATERIAL,
+  IFCRELASSOCIATESCLASSIFICATION,
+  IFCRELASSOCIATESDOCUMENT,
+  IFCRELCONTAINEDINSPATIALSTRUCTURE,
   LogLevel,
 } from "web-ifc";
 import { z } from "zod";
@@ -20,6 +26,7 @@ import type { CreationIndex } from "../../shared/asset-creation.js";
 import { effectiveCategory } from "./catalog.js";
 import { buildCatalog, type Candidate } from "./catalog.js";
 import { analyzeLibrary, type PropertyObservation } from "./analyze-library.js";
+import { elementAttributes } from "./element-attributes.js";
 import { AnalysisUnits } from "./analysis-units.js";
 import type { LibrarySnapshot } from "../../shared/catalog-library.js";
 import {
@@ -48,6 +55,15 @@ const entitySchema = z.object({
     .optional(),
   HasPropertySets: z.array(reference).nullish(),
   HasProperties: z.array(reference).optional(),
+  Quantities: z.array(reference).optional(),
+  HasQuantities: z.array(reference).optional(),
+  LengthValue: scalar,
+  AreaValue: scalar,
+  VolumeValue: scalar,
+  WeightValue: scalar,
+  TimeValue: scalar,
+  CountValue: scalar,
+  NumberValue: scalar,
   NominalValue: scalar,
   EnumerationValues: z.array(scalar).nullish(),
   ListValues: z.array(scalar).nullish(),
@@ -79,6 +95,9 @@ export class IfcReader {
   private typeEntities = new Map<number, Entity>();
   private classifications = new Map<number, { present: boolean; value: string | undefined; issues: string[] }>();
   private propertySets = new Map<number, PropertyObservation[]>();
+  private linkedAttributes = new Map<number, { id: number; group: string }[]>();
+  private attributeCache = new Map<string, PropertyObservation[]>();
+  private attributeRelationshipsRead = false;
   private analysis: {
     index: CatalogIndex;
     sourceName: string;
@@ -213,6 +232,7 @@ export class IfcReader {
           unitIds,
         ),
       };
+      if (purpose === "creation") this.readAttributeRelationships();
       progress(`Indexed ${index.types.length.toLocaleString()} asset types`);
       return index;
     } catch (error) {
@@ -311,6 +331,7 @@ export class IfcReader {
     return this.analyze(this.analysis?.index, progress);
   }
   analyzeAssets(progress: Progress = () => {}): LibrarySnapshot {
+    if (!this.attributeRelationshipsRead) this.readAttributeRelationships();
     return this.analyze(this.discoverAssets(progress), progress);
   }
   private analyze(index: CatalogIndex | CreationIndex | undefined, progress: Progress): LibrarySnapshot {
@@ -336,9 +357,85 @@ export class IfcReader {
           new Set(instance.map((field) => field.key)),
           "candidates" in index,
         );
-        return [...fallback, ...instance];
+        if (!("candidates" in index)) return [...fallback, ...instance];
+        return [...fallback, ...instance,
+          ...this.attributes(occurrenceId, "IFC element attributes"),
+          ...(typeId ? this.attributes(typeId, "IFC type attributes") : []),
+          ...[...(this.linkedAttributes.get(occurrenceId) ?? []), ...(typeId ? this.linkedAttributes.get(typeId) ?? [] : [])]
+            .flatMap(link => this.attributes(link.id, link.group)),
+        ];
       },
     });
+  }
+  private attributes(id: number, group: string): PropertyObservation[] {
+    const key = `${group}:${id}`;
+    let fields = this.attributeCache.get(key);
+    if (!fields) {
+      fields = elementAttributes({ raw: this.api.GetLine(this.current, id, false), group,
+        read: id => this.api.GetLine(this.current, id, false), className: type => this.api.GetNameFromTypeCode(type) });
+      this.attributeCache.set(key, fields);
+    }
+    return fields;
+  }
+  private readAttributeRelationships(): void {
+    const relationSchema = z.object({
+      RelatedObjects: z.array(reference).optional(), RelatedElements: z.array(reference).optional(),
+      RelatingGroup: reference.optional(), RelatingMaterial: reference.optional(),
+      RelatingClassification: reference.optional(), RelatingDocument: reference.optional(), RelatingStructure: reference.optional(),
+    });
+    const relationships = [
+      { type: IFCRELASSIGNSTOGROUP, key: "RelatingGroup", group: "IFC group attributes" },
+      { type: IFCRELASSOCIATESMATERIAL, key: "RelatingMaterial", group: "IFC material attributes" },
+      { type: IFCRELASSOCIATESCLASSIFICATION, key: "RelatingClassification", group: "IFC classification attributes" },
+      { type: IFCRELASSOCIATESDOCUMENT, key: "RelatingDocument", group: "IFC document attributes" },
+      { type: IFCRELCONTAINEDINSPATIALSTRUCTURE, key: "RelatingStructure", group: "IFC spatial container attributes" },
+    ] as const;
+    for (const { type, key, group } of relationships) for (const id of this.ids(type, true)) {
+      const relation = relationSchema.parse(this.api.GetLine(this.current, id, false));
+      const target = relation[key];
+      if (!target) continue;
+      const targetGroup = key === "RelatingGroup" && this.api.GetNameFromTypeCode(this.entity(target.value).type).toUpperCase().includes("SYSTEM")
+        ? "IFC system attributes" : group;
+      for (const related of relation.RelatedObjects ?? relation.RelatedElements ?? []) {
+        if (!this.candidates.has(related.value) && !this.typeEntities.has(related.value)) continue;
+        const links = this.linkedAttributes.get(related.value) ?? [];
+        if (!links.some(link => link.id === target.value && link.group === targetGroup)) links.push({ id: target.value, group: targetGroup });
+        this.linkedAttributes.set(related.value, links);
+      }
+    }
+    this.attributeRelationshipsRead = true;
+  }
+  private quantities(ids: number[], pset: string, units: AnalysisUnits, visited = new Set<number>()): PropertyObservation[] {
+    const fields: PropertyObservation[] = [];
+    const measures = [
+      ["LengthValue", "IFCLENGTHMEASURE"], ["AreaValue", "IFCAREAMEASURE"],
+      ["VolumeValue", "IFCVOLUMEMEASURE"], ["WeightValue", "IFCMASSMEASURE"],
+      ["TimeValue", "IFCTIMEMEASURE"], ["CountValue", "IFCCOUNTMEASURE"], ["NumberValue", "IFCNUMBERMEASURE"],
+    ] as const;
+    for (const id of ids) {
+      if (visited.has(id)) continue;
+      visited.add(id);
+      const quantity = this.entity(id);
+      const name = quantity.Name?.value ?? `Quantity #${id}`;
+      if (quantity.HasQuantities) {
+        fields.push(...this.quantities(quantity.HasQuantities.map(ref => ref.value), `${pset} / ${name}`, units, visited));
+        continue;
+      }
+      const measure = measures.find(([key]) => quantity[key] !== null && quantity[key] !== undefined);
+      const scalarValue = measure ? quantity[measure[0]]?.value : undefined;
+      const rawValue = scalarValue === undefined ? "" : String(scalarValue);
+      const measureName = measure?.[1] ?? "Unknown IFC quantity";
+      const resolved = units.forMeasure(measureName, quantity.Unit?.value);
+      const unit = resolved?.label ?? null;
+      let normalized = normalizeObservation({ value: rawValue, measure: "unsupported", unit });
+      if (typeof scalarValue === "number" && resolved?.factor !== null && resolved?.factor !== undefined && resolved.canonical) {
+        const value = scalarValue * resolved.factor;
+        if (Number.isFinite(value)) normalized = { kind: "number", value, unit: resolved.canonical };
+      }
+      fields.push({ key: JSON.stringify([pset, name]), pset, name, origin: "quantity", measure: measureName, unit,
+        rawValue, normalized: normalized.kind === "text" && /MEASURE/.test(measureName) ? { ...normalized, unresolvedMeasure: true } : normalized });
+    }
+    return fields;
   }
   private observations(
     setIds: number[],
@@ -403,6 +500,8 @@ export class IfcReader {
                   : normalized,
             });
           }
+        if (set.type === IFCELEMENTQUANTITY)
+          cached.push(...this.quantities((set.Quantities ?? []).map(ref => ref.value), set.Name?.value ?? `Quantity set #${setId}`, units));
         this.propertySets.set(setId, cached);
       }
       for (const field of cached) {
@@ -546,6 +645,9 @@ export class IfcReader {
     this.modelId = null;
     this.analysis = null;
     this.propertySets.clear();
+    this.attributeCache.clear();
+    this.linkedAttributes.clear();
+    this.attributeRelationshipsRead = false;
     this.candidates.clear();
     this.occurrenceSets.clear();
     this.occurrenceTypes.clear();
