@@ -1,5 +1,5 @@
 import { createRoot } from "react-dom/client";
-import "@fontsource-variable/roboto-flex";
+import "./design-system-fonts.css";
 import "./styles.css";
 import { App } from "./App.js";
 const root = document.getElementById("root");

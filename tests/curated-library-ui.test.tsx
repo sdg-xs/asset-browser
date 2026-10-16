@@ -457,6 +457,36 @@ describe("curated catalog", () => {
     expect(popup.querySelector("h2")?.textContent).toBe("🔥 Cabinet");
     expect(within(popup).getByRole("button", { name: "Close dialog" })).toBeTruthy();
   });
+  it("selects a property and sample level through Insert without saving or opening a model", async () => {
+    const f = fixture(true);
+    render(<CatalogWorkspace catalogApi={f.api} sourceApi={f.sources} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Preview Cabinet" }));
+    const preview = screen.getByRole("dialog", { name: "Definition preview" });
+    const insert = within(preview).getByRole("button", { name: "Insert" });
+    insert.focus();
+    fireEvent.click(insert);
+    const dialog = screen.getByRole("dialog", { name: "Insert asset" });
+    expect(within(dialog).getByRole("button", { name: "Select level" })).toHaveProperty("disabled", true);
+    expect(within(dialog).getAllByRole("radio")).toHaveLength(9);
+    fireEvent.change(within(dialog).getByRole("searchbox", { name: "Search properties" }), { target: { value: "JV3" } });
+    expect(within(dialog).getAllByRole("radio")).toHaveLength(1);
+    fireEvent.click(within(dialog).getByRole("radio", { name: "JV3" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Select level" }));
+    expect(within(dialog).getByRole("heading", { name: "Select a level" })).toBeTruthy();
+    expect(within(dialog).getByText(/Sample levels are shown for this test/)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("radio", { name: "Level 1" }));
+    expect(within(dialog).getByRole("status").textContent).toContain("JV3 · Level 1");
+    expect(within(dialog).queryByRole("button", { name: /Open model|Insert asset/ })).toBeNull();
+    expect(f.api.execute).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Back to properties" }));
+    expect(within(dialog).getByRole("radio", { name: "JV3" })).toHaveProperty("checked", true);
+    fireEvent.click(within(dialog).getByRole("radio", { name: "BS19" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Select level" }));
+    expect(within(dialog).getByRole("radio", { name: "Level 1" })).toHaveProperty("checked", false);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close dialog" }));
+    expect(screen.queryByRole("dialog", { name: "Insert asset" })).toBeNull();
+    expect(document.activeElement).toBe(insert);
+  });
   it("uses the first approved definition per type name without a source selector", async () => {
     const f = fixture(true);
     const duplicate = structuredClone(snapshot);

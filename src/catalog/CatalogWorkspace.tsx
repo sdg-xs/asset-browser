@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { loadAssetViewer } from "../viewer/load-viewer.js";
 import { Boxes, FileUp, Grid2X2, List, Search } from "lucide-react";
 import { AssetCreationDialog } from "./AssetCreationDialog.js";
+import { InsertAssetDialog } from "./InsertAssetDialog.js";
 import type { CreationWorker } from "./useAssetCreation.js";
 import { useSourceAvailability } from "./useSourceAvailability.js";
 import { IfcWorkerClient } from "../ifc/client.js";
@@ -51,6 +52,7 @@ export function CatalogWorkspace({
     >(null);
   const [page, setPage] = useState(0);
   const [creating, setCreating] = useState(false);
+  const [inserting, setInserting] = useState(false);
   const [geometryFiles, setGeometryFiles] = useState<File[] | null>(null);
   const [creationNotice, setCreationNotice] = useState("");
   const { availability, retry: retryAvailability } = useSourceAvailability(
@@ -98,6 +100,7 @@ export function CatalogWorkspace({
   const selectedGroup = [...groups.values()].find(members => members.some(member => member.id === selected)) ?? [];
   const selectedCardId = selectedGroup[0]?.id ?? selected;
   const navigate = () => {
+    setInserting(false);
     retryAvailability();
     setCategoriesOpen(false);
     setSelected("");
@@ -330,8 +333,16 @@ export function CatalogWorkspace({
           className="definition-preview-dialog"
         >
           {inspect}
+          <div className="dialog-actions">
+            <button type="button" className="primary" onClick={() => setInserting(true)}>
+              Insert
+            </button>
+          </div>
         </Dialog>
       )}
+      {inserting && modal && entry && !categoriesOpen && <InsertAssetDialog
+        key={entry.id} assetName={entry.definition.name} onClose={() => setInserting(false)}
+      />}
       {entry && state && editor === "edit" && (
         <EntryEditor
           error={catalog.error}
